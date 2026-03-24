@@ -1,5 +1,5 @@
-import { GeoPoint, GeoLineString } from './geometry';
-import { Annotation, Building } from './building';
+import type { GeoPoint, GeoLineString } from './geometry';
+import type { Annotation, Building } from './building';
 
 export type ProjectStatus = 'draft' | 'survey' | 'design' | 'review' | 'complete';
 

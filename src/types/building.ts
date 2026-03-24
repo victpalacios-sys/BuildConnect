@@ -1,4 +1,4 @@
-import { Point2D, GeoPolygon } from './geometry';
+import type { Point2D, GeoPolygon } from './geometry';
 
 export interface Wall {
   id: string;

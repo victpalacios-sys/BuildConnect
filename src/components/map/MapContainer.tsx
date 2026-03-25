@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useProjectStore } from '@/store/projectStore';
-import { queryBuildingFootprints, findNearestBuilding } from '@/services/overpass';
+import { queryBuildingFootprints } from '@/services/overpass';
 import { geocodeAddress } from '@/services/geocode';
 import type { GeoPolygon } from '@/types/geometry';
 import { createBuildingLayer, LAYER_ID } from './ThreeBuildingLayer';
@@ -11,17 +11,26 @@ const STYLE_URL = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json
 const DEFAULT_CENTER: [number, number] = [-73.985, 40.748]; // NYC fallback
 
 interface MapContainerProps {
-  onBuildingSelected: (polygon: GeoPolygon, levels: number | null) => void;
+  mapTileOpacity?: number;           // 0-1, dims street tiles
+  allowFootprintSelection?: boolean; // only true during add/edit building flow
+  onBuildingFootprintSelected?: (polygon: GeoPolygon, levels: number | null) => void;
+  onMapBuildingClicked?: (buildingId: string) => void;
   show3D?: boolean;
 }
 
-export function MapContainer({ onBuildingSelected, show3D = false }: MapContainerProps) {
+export function MapContainer({
+  mapTileOpacity = 1.0,
+  allowFootprintSelection = false,
+  onBuildingFootprintSelected,
+  onMapBuildingClicked,
+  show3D = false,
+}: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const { currentProject, updateCurrentProject } = useProjectStore();
+  const { currentProject, activeBuildingId, updateCurrentProject } = useProjectStore();
   const [loading, setLoading] = useState(false);
 
-  const loadBuildings = useCallback(async (map: maplibregl.Map, autoSelect?: boolean) => {
+  const loadBuildings = useCallback(async (map: maplibregl.Map) => {
     const center = map.getCenter();
     setLoading(true);
     try {
@@ -60,27 +69,49 @@ export function MapContainer({ onBuildingSelected, show3D = false }: MapContaine
           },
         });
       }
-
-      // Auto-select nearest building to map center
-      if (autoSelect && buildings.length > 0) {
-        const nearest = findNearestBuilding(buildings, center.lat, center.lng);
-        if (nearest) {
-          const src = map.getSource('selected-building') as maplibregl.GeoJSONSource | undefined;
-          if (src) {
-            src.setData({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', properties: {}, geometry: nearest.polygon }],
-            });
-          }
-          onBuildingSelected(nearest.polygon, nearest.levels);
-        }
-      }
     } catch (err) {
       console.error('Failed to load buildings:', err);
     } finally {
       setLoading(false);
     }
-  }, [onBuildingSelected]);
+  }, []);
+
+  // Render project buildings as highlighted footprint layers
+  const renderProjectBuildings = useCallback((map: maplibregl.Map) => {
+    if (!currentProject) return;
+
+    const features: GeoJSON.Feature[] = currentProject.buildings
+      .filter((b) => b.footprint)
+      .map((b) => ({
+        type: 'Feature' as const,
+        properties: { buildingId: b.id },
+        geometry: b.footprint!,
+      }));
+
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features,
+    };
+
+    const source = map.getSource('project-buildings') as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(geojson);
+    } else {
+      map.addSource('project-buildings', { type: 'geojson', data: geojson });
+      map.addLayer({
+        id: 'project-buildings-fill',
+        type: 'fill',
+        source: 'project-buildings',
+        paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.3 },
+      });
+      map.addLayer({
+        id: 'project-buildings-outline',
+        type: 'line',
+        source: 'project-buildings',
+        paint: { 'line-color': '#1d4ed8', 'line-width': 3.5 },
+      });
+    }
+  }, [currentProject]);
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -93,14 +124,18 @@ export function MapContainer({ onBuildingSelected, show3D = false }: MapContaine
 
       if (currentProject?.center) {
         center = [currentProject.center.lng, currentProject.center.lat];
-      } else if (currentProject?.address) {
-        // Geocode the project address
-        const result = await geocodeAddress(currentProject.address);
-        if (cancelled) return;
-        if (result) {
-          center = [result.lng, result.lat];
-          // Persist the geocoded center so we don't re-geocode next time
-          updateCurrentProject({ center: { lat: result.lat, lng: result.lng } });
+      } else if (currentProject?.buildings.length) {
+        // Try first building's address
+        const firstBuilding = currentProject.buildings[0];
+        if (firstBuilding.address) {
+          const result = await geocodeAddress(firstBuilding.address);
+          if (cancelled) return;
+          if (result) {
+            center = [result.lng, result.lat];
+            updateCurrentProject({ center: { lat: result.lat, lng: result.lng } });
+          } else {
+            center = DEFAULT_CENTER;
+          }
         } else {
           center = DEFAULT_CENTER;
         }
@@ -126,64 +161,46 @@ export function MapContainer({ onBuildingSelected, show3D = false }: MapContaine
       map.on('load', () => {
         mapRef.current = map;
 
-        // Selected building highlight layer
-        map.addSource('selected-building', {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: [] },
-        });
-        map.addLayer({
-          id: 'selected-building-fill',
-          type: 'fill',
-          source: 'selected-building',
-          paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.3 },
-        });
-        map.addLayer({
-          id: 'selected-building-outline',
-          type: 'line',
-          source: 'selected-building',
-          paint: { 'line-color': '#1d4ed8', 'line-width': 3.5 },
-        });
+        // Project buildings highlight layer (replaces old single selected-building layer)
+        renderProjectBuildings(map);
 
-        // Show existing selection if project already has a footprint
-        const hasFootprint = !!currentProject?.building.footprint;
-        if (hasFootprint) {
-          (map.getSource('selected-building') as maplibregl.GeoJSONSource).setData({
-            type: 'FeatureCollection',
-            features: [{
-              type: 'Feature',
-              properties: {},
-              geometry: currentProject.building.footprint,
-            }],
-          });
-        }
-
-        // Load buildings; auto-select nearest if no footprint yet
-        loadBuildings(map, !hasFootprint);
+        // Load Overpass buildings
+        loadBuildings(map);
       });
 
+      // Overpass building click — only when footprint selection is allowed
       map.on('click', 'buildings-fill', (e) => {
+        if (!allowFootprintSelection || !onBuildingFootprintSelected) return;
         if (e.features?.[0]) {
           const feature = e.features[0];
           const polygon = feature.geometry as unknown as GeoPolygon;
           const levels = (feature.properties?.levels as number) ?? null;
+          onBuildingFootprintSelected(polygon, levels);
+        }
+      });
 
-          // Highlight the selected building
-          const src = map.getSource('selected-building') as maplibregl.GeoJSONSource | undefined;
-          if (src) {
-            src.setData({
-              type: 'FeatureCollection',
-              features: [{ type: 'Feature', properties: {}, geometry: polygon }],
-            });
+      // Project building click
+      map.on('click', 'project-buildings-fill', (e) => {
+        if (e.features?.[0]) {
+          const buildingId = e.features[0].properties?.buildingId as string;
+          if (buildingId && onMapBuildingClicked) {
+            onMapBuildingClicked(buildingId);
           }
-
-          onBuildingSelected(polygon, levels);
         }
       });
 
       map.on('mouseenter', 'buildings-fill', () => {
-        map.getCanvas().style.cursor = 'pointer';
+        if (allowFootprintSelection) {
+          map.getCanvas().style.cursor = 'pointer';
+        }
       });
       map.on('mouseleave', 'buildings-fill', () => {
+        map.getCanvas().style.cursor = '';
+      });
+      map.on('mouseenter', 'project-buildings-fill', () => {
+        map.getCanvas().style.cursor = 'pointer';
+      });
+      map.on('mouseleave', 'project-buildings-fill', () => {
         map.getCanvas().style.cursor = '';
       });
     }
@@ -194,7 +211,30 @@ export function MapContainer({ onBuildingSelected, show3D = false }: MapContaine
       cancelled = true;
       if (map) map.remove();
     };
-  }, [currentProject?.center, currentProject?.address, loadBuildings, onBuildingSelected, updateCurrentProject]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentProject?.center, currentProject?.buildings.length, loadBuildings, renderProjectBuildings, updateCurrentProject]);
+
+  // Update project building footprints when buildings change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    renderProjectBuildings(map);
+  }, [currentProject?.buildings, renderProjectBuildings]);
+
+  // Manage map tile opacity
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const style = map.getStyle();
+    if (!style?.layers) return;
+
+    for (const layer of style.layers) {
+      if (layer.type === 'raster') {
+        map.setPaintProperty(layer.id, 'raster-opacity', mapTileOpacity);
+      }
+    }
+  }, [mapTileOpacity]);
 
   // Manage 3D building layer
   useEffect(() => {
@@ -206,15 +246,15 @@ export function MapContainer({ onBuildingSelected, show3D = false }: MapContaine
       map.removeLayer(LAYER_ID);
     }
 
-    const building = currentProject?.building;
-    if (show3D && building && building.floors.length > 0 && building.footprint) {
-      const layer = createBuildingLayer(building);
+    const activeBuilding = currentProject?.buildings.find((b) => b.id === activeBuildingId);
+    if (show3D && activeBuilding && activeBuilding.floors.length > 0 && activeBuilding.footprint) {
+      const layer = createBuildingLayer(activeBuilding);
       map.addLayer(layer);
       map.easeTo({ pitch: 55, bearing: -20, duration: 800 });
     } else {
       map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
     }
-  }, [show3D, currentProject?.building]);
+  }, [show3D, currentProject?.buildings, activeBuildingId]);
 
   return (
     <div className="relative w-full h-full">

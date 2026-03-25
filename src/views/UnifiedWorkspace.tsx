@@ -9,6 +9,7 @@ import { FloorSelector } from '@/components/layout/FloorSelector';
 import { ProjectInfoPanel } from '@/components/panels/ProjectInfoPanel';
 import { BuildingPanel } from '@/components/panels/BuildingPanel';
 import { ElementPropertiesPanel } from '@/components/panels/ElementPropertiesPanel';
+import { MapContainer } from '@/components/map/MapContainer';
 
 export function UnifiedWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -87,10 +88,14 @@ export function UnifiedWorkspace() {
         )}
 
         <div className="flex-1 relative">
-          {/* MapContainer placeholder — wired in Task 8 */}
-          <div className="w-full h-full bg-gray-100 flex items-center justify-center text-gray-400">
-            Map Canvas
-          </div>
+          <MapContainer
+            mapTileOpacity={viewMode === 'floor' ? 0.1 : 1.0}
+            allowFootprintSelection={false}
+            onMapBuildingClicked={(buildingId) => {
+              setActiveBuilding(buildingId);
+              setViewMode('building');
+            }}
+          />
         </div>
 
         {breakpoint === 'desktop' ? (

@@ -5,23 +5,18 @@ import type { GeoPolygon } from '@/types/geometry';
 import { Search, Box } from 'lucide-react';
 
 export function MapView() {
-  const { currentProject, updateCurrentProject } = useProjectStore();
+  const { currentProject, activeBuildingId, updateBuilding } = useProjectStore();
   const [show3D, setShow3D] = useState(false);
 
-  const hasFloors = (currentProject?.building.floors.length ?? 0) > 0;
+  const activeBuilding = currentProject?.buildings.find((b) => b.id === activeBuildingId);
+  const hasFloors = (activeBuilding?.floors.length ?? 0) > 0;
 
-  const handleBuildingSelected = useCallback(
-    async (polygon: GeoPolygon, levels: number | null) => {
-      if (!currentProject) return;
-      await updateCurrentProject({
-        building: {
-          ...currentProject.building,
-          footprint: polygon,
-          floorCount: levels ?? currentProject.building.floorCount,
-        },
-      });
+  const handleBuildingFootprintSelected = useCallback(
+    async (polygon: GeoPolygon, _levels: number | null) => {
+      if (!activeBuildingId) return;
+      await updateBuilding(activeBuildingId, { footprint: polygon });
     },
-    [currentProject, updateCurrentProject],
+    [activeBuildingId, updateBuilding],
   );
 
   return (
@@ -30,7 +25,7 @@ export function MapView() {
         <div className="flex items-center gap-2">
           <Search className="w-4 h-4 text-gray-400" />
           <span className="text-sm text-gray-500">
-            {currentProject?.building.footprint
+            {activeBuilding?.footprint
               ? 'Building footprint selected. Click another to change.'
               : 'Click a building on the map to select its footprint.'}
           </span>
@@ -50,7 +45,11 @@ export function MapView() {
         </button>
       </div>
       <div className="flex-1">
-        <MapContainer onBuildingSelected={handleBuildingSelected} show3D={show3D} />
+        <MapContainer
+          allowFootprintSelection
+          onBuildingFootprintSelected={handleBuildingFootprintSelected}
+          show3D={show3D}
+        />
       </div>
     </div>
   );

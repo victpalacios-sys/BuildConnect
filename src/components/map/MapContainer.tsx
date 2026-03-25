@@ -27,6 +27,7 @@ interface MapContainerProps {
   activeBuildingFootprint?: GeoPolygon | null;
   viewMode?: ViewMode;
   activeTool?: EditorTool;
+  pendingFootprint?: GeoPolygon | null; // shows preview during Add Building flow
   mapRef?: React.MutableRefObject<maplibregl.Map | null>;
 }
 
@@ -43,6 +44,7 @@ export function MapContainer({
   activeBuildingFootprint = null,
   viewMode = 'site',
   activeTool = 'select',
+  pendingFootprint = null,
   mapRef: externalMapRef,
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -371,6 +373,46 @@ export function MapContainer({
       }
     }
   }, [viewMode, activeFloor, activeBuildingFootprint]);
+
+  // Show pending footprint preview during Add Building flow
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    const sourceId = 'pending-footprint';
+    const fillId = 'pending-footprint-fill';
+    const outlineId = 'pending-footprint-outline';
+
+    if (pendingFootprint) {
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry: pendingFootprint }],
+      };
+      const source = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined;
+      if (source) {
+        source.setData(geojson);
+      } else {
+        map.addSource(sourceId, { type: 'geojson', data: geojson });
+        map.addLayer({
+          id: fillId,
+          type: 'fill',
+          source: sourceId,
+          paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.25 },
+        });
+        map.addLayer({
+          id: outlineId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': '#1d4ed8', 'line-width': 3 },
+        });
+      }
+    } else {
+      // Clear pending footprint layers
+      if (map.getLayer(fillId)) map.removeLayer(fillId);
+      if (map.getLayer(outlineId)) map.removeLayer(outlineId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+  }, [pendingFootprint]);
 
   return (
     <div className="relative w-full h-full">

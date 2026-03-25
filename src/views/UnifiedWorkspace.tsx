@@ -346,6 +346,7 @@ export function UnifiedWorkspace() {
             activeBuildingFootprint={activeBuilding?.footprint ?? null}
             viewMode={viewMode}
             activeTool={activeTool}
+            pendingFootprint={addingBuilding ? pendingFootprint : null}
             mapRef={mapRef}
           />
           <Reticle

@@ -45,32 +45,8 @@ export function UnifiedWorkspace() {
     }
   }, [projectId, currentProject?.id, openProject]);
 
-  // Clear selection when switching floors or view modes
-  useEffect(() => {
-    setSelectedElement(null);
-    if (mapRef.current) {
-      setSelectionHighlight(mapRef.current, null);
-    }
-  }, [activeFloorIndex, viewMode]);
-
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading project...</div>;
-  }
-
-  if (!currentProject) {
-    return (
-      <div className="min-h-screen flex items-center justify-center text-gray-400">
-        <div className="text-center">
-          <p>Project not found</p>
-          <button onClick={() => navigate('/')} className="mt-2 text-blue-600 text-sm hover:underline">Back to projects</button>
-        </div>
-      </div>
-    );
-  }
-
-  const activeBuilding = currentProject.buildings.find((b) => b.id === activeBuildingId);
+  const activeBuilding = currentProject?.buildings.find((b) => b.id === activeBuildingId) ?? undefined;
   const activeFloor = activeBuilding?.floors[activeFloorIndex] ?? null;
-  const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
   const {
     building: _editorBuilding,
@@ -104,6 +80,14 @@ export function UnifiedWorkspace() {
     onElementSelected: handleElementSelected,
   });
 
+  // Clear selection when switching floors or view modes
+  useEffect(() => {
+    setSelectedElement(null);
+    if (mapRef.current) {
+      setSelectionHighlight(mapRef.current, null);
+    }
+  }, [activeFloorIndex, viewMode]);
+
   // Update section cut rendering on map when building section cuts change
   useEffect(() => {
     const map = mapRef.current;
@@ -112,6 +96,8 @@ export function UnifiedWorkspace() {
       updateSectionCutData(map, activeBuilding.sectionCuts);
     }
   }, [activeBuilding?.sectionCuts, viewMode]);
+
+  const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
   // Resolve selected element data from the floor
   const selectedElementType: ElementType | null = selectedElement?.type ?? null;
@@ -194,6 +180,22 @@ export function UnifiedWorkspace() {
   const handleFlyTo = useCallback((lat: number, lng: number) => {
     mapRef.current?.flyTo({ center: [lng, lat], zoom: 17 });
   }, []);
+
+  // Early returns AFTER all hooks
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading project...</div>;
+  }
+
+  if (!currentProject) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-gray-400">
+        <div className="text-center">
+          <p>Project not found</p>
+          <button onClick={() => navigate('/')} className="mt-2 text-blue-600 text-sm hover:underline">Back to projects</button>
+        </div>
+      </div>
+    );
+  }
 
   let panelTitle = 'Project';
   let panelContent = <ProjectInfoPanel onAddBuilding={handleStartAddBuilding} />;

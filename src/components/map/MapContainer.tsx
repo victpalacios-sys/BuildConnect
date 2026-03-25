@@ -43,6 +43,18 @@ export function MapContainer({
   const { currentProject, activeBuildingId, updateCurrentProject } = useProjectStore();
   const [loading, setLoading] = useState(false);
 
+  // Use refs to avoid stale closures in map event handlers
+  const onMapClickRef = useRef(onMapClick);
+  onMapClickRef.current = onMapClick;
+  const onMapBuildingClickedRef = useRef(onMapBuildingClicked);
+  onMapBuildingClickedRef.current = onMapBuildingClicked;
+  const allowFootprintSelectionRef = useRef(allowFootprintSelection);
+  allowFootprintSelectionRef.current = allowFootprintSelection;
+  const onBuildingFootprintSelectedRef = useRef(onBuildingFootprintSelected);
+  onBuildingFootprintSelectedRef.current = onBuildingFootprintSelected;
+  const viewModeRef = useRef(viewMode);
+  viewModeRef.current = viewMode;
+
   const loadBuildings = useCallback(async (map: maplibregl.Map) => {
     const center = map.getCenter();
     setLoading(true);
@@ -184,28 +196,29 @@ export function MapContainer({
 
       // General map click — forwarded to parent for drawing tools
       map.on('click', (e) => {
-        if (onMapClick) {
-          onMapClick({ lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat }, point: { x: e.point.x, y: e.point.y } });
+        if (onMapClickRef.current) {
+          onMapClickRef.current({ lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat }, point: { x: e.point.x, y: e.point.y } });
         }
       });
 
       // Overpass building click — only when footprint selection is allowed
       map.on('click', 'buildings-fill', (e) => {
-        if (!allowFootprintSelection || !onBuildingFootprintSelected) return;
+        if (!allowFootprintSelectionRef.current || !onBuildingFootprintSelectedRef.current) return;
         if (e.features?.[0]) {
           const feature = e.features[0];
           const polygon = feature.geometry as unknown as GeoPolygon;
           const levels = (feature.properties?.levels as number) ?? null;
-          onBuildingFootprintSelected(polygon, levels);
+          onBuildingFootprintSelectedRef.current(polygon, levels);
         }
       });
 
-      // Project building click
+      // Project building click — skip when editing a floor (drawing tools handle clicks)
       map.on('click', 'project-buildings-fill', (e) => {
+        if (viewModeRef.current === 'floor') return;
         if (e.features?.[0]) {
           const buildingId = e.features[0].properties?.buildingId as string;
-          if (buildingId && onMapBuildingClicked) {
-            onMapBuildingClicked(buildingId);
+          if (buildingId && onMapBuildingClickedRef.current) {
+            onMapBuildingClickedRef.current(buildingId);
           }
         }
       });

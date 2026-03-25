@@ -14,17 +14,19 @@ interface BuildConnectDB extends DBSchema {
 }
 
 const DB_NAME = 'buildconnect';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise: Promise<IDBPDatabase<BuildConnectDB>> | null = null;
 
 export function getDB(): Promise<IDBPDatabase<BuildConnectDB>> {
   if (!dbPromise) {
     dbPromise = openDB<BuildConnectDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
-        const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
-        projectStore.createIndex('by-updated', 'updatedAt');
-        projectStore.createIndex('by-status', 'status');
+      upgrade(db, oldVersion) {
+        if (oldVersion < 1) {
+          const projectStore = db.createObjectStore('projects', { keyPath: 'id' });
+          projectStore.createIndex('by-updated', 'updatedAt');
+          projectStore.createIndex('by-status', 'status');
+        }
       },
     });
   }

@@ -1,53 +1,52 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDB } from './db';
 import type { Project } from '@/types/project';
+import { migrateProjectV1toV2 } from './migrate';
 
-function createEmptyProject(name: string, address: string, customer: string): Project {
+function createEmptyProject(name: string, customer: string): Project {
   const now = Date.now();
   return {
     id: uuidv4(),
     name,
-    address,
     customer,
     status: 'draft',
     createdAt: now,
     updatedAt: now,
     center: null,
+    contacts: [],
+    buildings: [],
     outdoorPlan: {
       fiberSourceLocation: null,
-      cableRoute: null,
+      cableRoutes: [],
+      equipment: [],
       annotations: [],
-    },
-    building: {
-      id: uuidv4(),
-      footprint: null,
-      footprintLocal: [],
-      floorCount: 1,
-      defaultFloorHeight: 3.0,
-      floors: [],
     },
   };
 }
 
 export async function createProject(
   name: string,
-  address: string,
   customer: string,
 ): Promise<Project> {
   const db = await getDB();
-  const project = createEmptyProject(name, address, customer);
+  const project = createEmptyProject(name, customer);
   await db.put('projects', project);
   return project;
 }
 
 export async function getProject(id: string): Promise<Project | undefined> {
   const db = await getDB();
-  return db.get('projects', id);
+  const raw = await db.get('projects', id);
+  if (!raw) return undefined;
+  const migrated = migrateProjectV1toV2(raw);
+  if (migrated !== raw) await db.put('projects', migrated);
+  return migrated;
 }
 
 export async function listProjects(): Promise<Project[]> {
   const db = await getDB();
-  return db.getAllFromIndex('projects', 'by-updated');
+  const rawList = await db.getAllFromIndex('projects', 'by-updated');
+  return rawList.map(migrateProjectV1toV2);
 }
 
 export async function updateProject(

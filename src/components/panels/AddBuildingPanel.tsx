@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Search, Check, Building2, AlertCircle } from 'lucide-react';
 import { geocodeAddress } from '@/services/geocode';
-import { findNearestBuilding } from '@/services/overpass';
+import { findNearestBuilding, queryBuildingFootprints } from '@/services/overpass';
 import type { OSMBuilding } from '@/services/overpass';
 import { geoPolygonToLocal, generateFloors } from '@/services/building-generator';
 import type { Building } from '@/types/building';
@@ -56,18 +56,41 @@ export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selected
       if (result) {
         onFlyTo(result.lat, result.lng);
 
-        // Auto-select nearest building footprint from already-loaded OSM data
+        // Auto-select nearest building footprint
         if (onAutoSelectFootprint) {
           let found = false;
+
+          // Check if cached osmBuildings are near the geocoded point (within ~0.01 degrees ≈ 1km)
           if (osmBuildings && osmBuildings.length > 0) {
             const nearest = findNearestBuilding(osmBuildings, result.lat, result.lng);
             if (nearest) {
-              onAutoSelectFootprint(nearest.polygon, nearest.levels);
-              found = true;
+              const coords = nearest.polygon.coordinates[0];
+              const centLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+              const centLng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+              const dist = Math.hypot(centLat - result.lat, centLng - result.lng);
+              if (dist < 0.005) { // ~500m — these buildings are in the right area
+                onAutoSelectFootprint(nearest.polygon, nearest.levels);
+                found = true;
+              }
             }
           }
+
+          // If cached buildings are stale (wrong area), query Overpass at the geocoded point
           if (!found) {
-            // Overpass failed or no nearby building found — use default rectangle
+            try {
+              const freshBuildings = await queryBuildingFootprints(result.lat, result.lng, 100);
+              const nearest = findNearestBuilding(freshBuildings, result.lat, result.lng);
+              if (nearest) {
+                onAutoSelectFootprint(nearest.polygon, nearest.levels);
+                found = true;
+              }
+            } catch {
+              // Overpass failed — fall through to default rectangle
+            }
+          }
+
+          if (!found) {
+            // Last resort — use default rectangle at geocoded point
             onAutoSelectFootprint(createDefaultFootprint(result.lat, result.lng), null);
             setAutoSelectFailed(true);
           }

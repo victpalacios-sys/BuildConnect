@@ -209,6 +209,7 @@ export function UnifiedWorkspace() {
         selectedFootprint={pendingFootprint}
         selectedLevels={pendingLevels}
         onFlyTo={handleFlyTo}
+        onAutoSelectFootprint={handleFootprintSelected}
       />
     );
   } else if (activeBuildingId && activeBuilding) {

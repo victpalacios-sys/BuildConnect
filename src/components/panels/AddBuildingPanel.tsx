@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { Search, Check, Building2 } from 'lucide-react';
 import { geocodeAddress } from '@/services/geocode';
+import { queryBuildingFootprints, findNearestBuilding } from '@/services/overpass';
 import { geoPolygonToLocal, generateFloors } from '@/services/building-generator';
 import type { Building } from '@/types/building';
 import type { GeoPolygon } from '@/types/geometry';
@@ -12,9 +13,10 @@ interface AddBuildingPanelProps {
   selectedFootprint: GeoPolygon | null;
   selectedLevels: number | null;
   onFlyTo: (lat: number, lng: number) => void;
+  onAutoSelectFootprint?: (polygon: GeoPolygon, levels: number | null) => void;
 }
 
-export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selectedLevels, onFlyTo }: AddBuildingPanelProps) {
+export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selectedLevels, onFlyTo, onAutoSelectFootprint }: AddBuildingPanelProps) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [floorCount, setFloorCount] = useState(3);
@@ -31,13 +33,26 @@ export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selected
       const result = await geocodeAddress(address);
       if (result) {
         onFlyTo(result.lat, result.lng);
+
+        // Auto-select nearest building footprint from OSM
+        if (onAutoSelectFootprint) {
+          try {
+            const buildings = await queryBuildingFootprints(result.lat, result.lng, 100);
+            const nearest = findNearestBuilding(buildings, result.lat, result.lng);
+            if (nearest) {
+              onAutoSelectFootprint(nearest.polygon, nearest.levels);
+            }
+          } catch {
+            // Overpass may be rate-limited — user can still manually select
+          }
+        }
       }
     } catch (err) {
       console.error('Geocoding failed:', err);
     } finally {
       setGeocoding(false);
     }
-  }, [address, onFlyTo]);
+  }, [address, onFlyTo, onAutoSelectFootprint]);
 
   const handleSave = useCallback(() => {
     const footprintLocal = selectedFootprint ? geoPolygonToLocal(selectedFootprint) : [];

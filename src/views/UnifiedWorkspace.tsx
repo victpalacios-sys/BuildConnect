@@ -73,7 +73,7 @@ export function UnifiedWorkspace() {
   const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
   const {
-    building: editorBuilding,
+    building: _editorBuilding,
     addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, addSectionCut,
     updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation,
     removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation,

@@ -81,7 +81,7 @@ export function createBuildingLayer(building: Building): maplibregl.CustomLayerI
       scene.add(meshGroup);
     },
 
-    render(_gl: WebGLRenderingContext, args: { defaultProjectionData: { mainMatrix: Float64Array } }) {
+    render(_gl: WebGLRenderingContext, args: unknown) {
       // MapLibre provides the camera projection matrix
       // In newer versions it's in args.defaultProjectionData.mainMatrix
       // In older versions it's directly args.matrix (as number[])

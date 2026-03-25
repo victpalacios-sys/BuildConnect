@@ -243,7 +243,7 @@ export function updateFloorPlanData(
         type: 'Feature' as const,
         properties: { id: door.id, width: door.width },
         geometry: { type: 'Point' as const, coordinates: localToGeo(pos, centroid) },
-      };
+      } as GeoJSON.Feature;
     })
     .filter((f): f is GeoJSON.Feature => f !== null);
 
@@ -260,7 +260,7 @@ export function updateFloorPlanData(
         type: 'Feature' as const,
         properties: { id: win.id, width: win.width },
         geometry: { type: 'Point' as const, coordinates: localToGeo(pos, centroid) },
-      };
+      } as GeoJSON.Feature;
     })
     .filter((f): f is GeoJSON.Feature => f !== null);
 

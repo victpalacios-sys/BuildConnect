@@ -64,7 +64,7 @@ export function createBuildingLayer(building: Building): maplibregl.CustomLayerI
 
       // Generate the building mesh
       // Mesh coordinate system: X=east, Y=up, Z=south (from bim-generator)
-      const meshGroup = generateBuildingMesh(building);
+      const meshGroup = generateBuildingMesh(building, building.groundFloorLevel);
 
       // MapLibre Mercator coordinate system: X=east, Y=south, Z=up
       // We need to swap Y↔Z: rotate -90° around X, then negate Z scale

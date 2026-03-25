@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import type { Building, Wall } from '@/types/building';
 
-export function generateBuildingMesh(building: Building): THREE.Group {
+export function generateBuildingMesh(building: Building, groundFloorLevel?: number): THREE.Group {
   const group = new THREE.Group();
+  const effectiveGroundLevel = groundFloorLevel ?? 0;
 
   const exteriorMat = new THREE.MeshLambertMaterial({ color: 0xd1d5db });
   const interiorMat = new THREE.MeshLambertMaterial({ color: 0x93c5fd });
@@ -13,7 +14,12 @@ export function generateBuildingMesh(building: Building): THREE.Group {
 
   let currentHeight = 0;
 
-  building.floors.forEach((floor) => {
+  // Only render above-ground floors
+  const aboveGroundFloors = building.floors
+    .filter((f) => f.level >= effectiveGroundLevel)
+    .sort((a, b) => a.level - b.level);
+
+  aboveGroundFloors.forEach((floor) => {
     const floorGroup = new THREE.Group();
     floorGroup.position.y = currentHeight;
 

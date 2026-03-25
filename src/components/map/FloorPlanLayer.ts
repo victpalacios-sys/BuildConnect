@@ -25,7 +25,7 @@ function getPolygonCentroid(polygon: GeoPolygon): [number, number] {
   return [lng, lat];
 }
 
-const LAYER_IDS = ['fp-walls', 'fp-doors', 'fp-windows', 'fp-equipment', 'fp-cables', 'fp-annotations'] as const;
+const LAYER_IDS = ['fp-walls', 'fp-doors', 'fp-windows', 'fp-equipment', 'fp-cables', 'fp-annotations', 'fp-selection'] as const;
 
 export function addFloorPlanLayers(map: MaplibreMap): void {
   // Add empty GeoJSON sources for each layer
@@ -51,7 +51,7 @@ export function addFloorPlanLayers(map: MaplibreMap): void {
     });
   }
 
-  // fp-doors: circle layer, amber
+  // fp-doors: circle layer, amber, larger radius for visibility
   if (!map.getLayer('fp-doors')) {
     map.addLayer({
       id: 'fp-doors',
@@ -59,14 +59,15 @@ export function addFloorPlanLayers(map: MaplibreMap): void {
       source: 'fp-doors',
       paint: {
         'circle-color': '#f59e0b',
-        'circle-radius': 6,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#fff',
+        'circle-radius': 8,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#ffffff',
+        'circle-pitch-alignment': 'map',
       },
     });
   }
 
-  // fp-windows: circle layer, sky-blue
+  // fp-windows: circle layer, sky-blue with darker blue border
   if (!map.getLayer('fp-windows')) {
     map.addLayer({
       id: 'fp-windows',
@@ -74,9 +75,10 @@ export function addFloorPlanLayers(map: MaplibreMap): void {
       source: 'fp-windows',
       paint: {
         'circle-color': '#38bdf8',
-        'circle-radius': 5,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#fff',
+        'circle-radius': 6,
+        'circle-stroke-width': 2,
+        'circle-stroke-color': '#0ea5e9',
+        'circle-pitch-alignment': 'map',
       },
     });
   }
@@ -132,6 +134,41 @@ export function addFloorPlanLayers(map: MaplibreMap): void {
       },
       paint: {
         'text-color': '#7c3aed',
+      },
+    });
+  }
+
+  // fp-selection: highlight circle for selected point elements
+  if (!map.getSource('fp-selection')) {
+    map.addSource('fp-selection', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+  }
+  if (!map.getLayer('fp-selection-circle')) {
+    map.addLayer({
+      id: 'fp-selection-circle',
+      type: 'circle',
+      source: 'fp-selection',
+      filter: ['==', ['geometry-type'], 'Point'],
+      paint: {
+        'circle-color': 'transparent',
+        'circle-radius': 14,
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#3b82f6',
+      },
+    });
+  }
+  if (!map.getLayer('fp-selection-line')) {
+    map.addLayer({
+      id: 'fp-selection-line',
+      type: 'line',
+      source: 'fp-selection',
+      filter: ['==', ['geometry-type'], 'LineString'],
+      paint: {
+        'line-color': '#3b82f6',
+        'line-width': 6,
+        'line-opacity': 0.5,
       },
     });
   }
@@ -232,8 +269,24 @@ function updateSource(map: MaplibreMap, sourceId: string, features: GeoJSON.Feat
   }
 }
 
+/** Highlight a selected feature on the map. Pass null to clear. */
+export function setSelectionHighlight(
+  map: MaplibreMap,
+  feature: GeoJSON.Feature | null,
+): void {
+  const source = map.getSource('fp-selection');
+  if (source && 'setData' in source) {
+    (source as GeoJSONSource).setData({
+      type: 'FeatureCollection',
+      features: feature ? [feature] : [],
+    });
+  }
+}
+
+const SELECTION_LAYER_IDS = ['fp-selection-circle', 'fp-selection-line'] as const;
+
 export function removeFloorPlanLayers(map: MaplibreMap): void {
-  for (const id of LAYER_IDS) {
+  for (const id of [...LAYER_IDS, ...SELECTION_LAYER_IDS]) {
     if (map.getLayer(id)) map.removeLayer(id);
   }
   for (const id of LAYER_IDS) {
@@ -243,4 +296,20 @@ export function removeFloorPlanLayers(map: MaplibreMap): void {
 
 export function hasFloorPlanLayers(map: MaplibreMap): boolean {
   return LAYER_IDS.some((id) => map.getSource(id));
+}
+
+/** Layer IDs that can be queried for element selection */
+export const QUERYABLE_LAYER_IDS = ['fp-walls', 'fp-doors', 'fp-windows', 'fp-equipment', 'fp-cables', 'fp-annotations'] as const;
+
+/** Map a layer ID to an element type */
+export function layerIdToElementType(layerId: string): 'wall' | 'door' | 'window' | 'equipment' | 'cable' | 'annotation' | null {
+  switch (layerId) {
+    case 'fp-walls': return 'wall';
+    case 'fp-doors': return 'door';
+    case 'fp-windows': return 'window';
+    case 'fp-equipment': return 'equipment';
+    case 'fp-cables': return 'cable';
+    case 'fp-annotations': return 'annotation';
+    default: return null;
+  }
 }

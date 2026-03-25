@@ -35,10 +35,6 @@ export function generateBuildingMesh(building: Building): THREE.Group {
     currentHeight += floor.height;
   });
 
-  const box = new THREE.Box3().setFromObject(group);
-  const center = box.getCenter(new THREE.Vector3());
-  group.position.sub(center);
-
   return group;
 }
 

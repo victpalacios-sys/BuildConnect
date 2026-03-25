@@ -1,4 +1,4 @@
-import type { Point2D, GeoPolygon } from './geometry';
+import type { Point2D, GeoPoint, GeoPolygon } from './geometry';
 
 export interface Wall {
   id: string;
@@ -66,10 +66,18 @@ export interface PhotoAnnotation {
   timestamp: number;
 }
 
+export interface SectionCut {
+  id: string;
+  label: string;
+  start: GeoPoint;
+  end: GeoPoint;
+}
+
 export interface Floor {
   id: string;
   level: number; // 0 = ground, 1 = first, -1 = basement
   label: string;
+  shortLabel: string; // compact label for floor nav, e.g. "4", "-1", "M"
   height: number; // floor-to-floor height in meters
   walls: Wall[];
   doors: Door[];
@@ -82,9 +90,12 @@ export interface Floor {
 
 export interface Building {
   id: string;
+  name: string;
+  address: string;
   footprint: GeoPolygon | null; // from OSM or manual
   footprintLocal: Point2D[]; // local coordinates in meters
-  floorCount: number;
+  groundFloorLevel: number; // default 0, configurable per locale
   defaultFloorHeight: number; // meters
   floors: Floor[];
+  sectionCuts: SectionCut[];
 }

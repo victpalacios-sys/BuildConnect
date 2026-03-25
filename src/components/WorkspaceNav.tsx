@@ -1,11 +1,13 @@
-import { Map, Grid3x3, PenTool, Box, ArrowLeft } from 'lucide-react';
+import { Map, Grid3x3, PenTool, Box, ArrowLeft, Settings } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface WorkspaceNavProps {
   projectId: string;
+  projectName?: string;
+  onEditProject?: () => void;
 }
 
-export function WorkspaceNav({ projectId }: WorkspaceNavProps) {
+export function WorkspaceNav({ projectId, projectName, onEditProject }: WorkspaceNavProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const base = `/project/${projectId}`;
@@ -26,7 +28,12 @@ export function WorkspaceNav({ projectId }: WorkspaceNavProps) {
       >
         <ArrowLeft className="w-5 h-5 text-gray-600" />
       </button>
-      <div className="flex gap-1">
+      {projectName && (
+        <span className="text-sm font-medium text-gray-700 mr-3 hidden md:inline truncate max-w-48">
+          {projectName}
+        </span>
+      )}
+      <div className="flex gap-1 flex-1">
         {tabs.map(({ path, label, icon: Icon }) => {
           const active = location.pathname === path;
           return (
@@ -45,6 +52,15 @@ export function WorkspaceNav({ projectId }: WorkspaceNavProps) {
           );
         })}
       </div>
+      {onEditProject && (
+        <button
+          onClick={onEditProject}
+          className="p-2 hover:bg-gray-100 rounded ml-2"
+          title="Edit project details"
+        >
+          <Settings className="w-4 h-4 text-gray-500" />
+        </button>
+      )}
     </nav>
   );
 }

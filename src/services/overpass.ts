@@ -1,11 +1,36 @@
 import type { GeoPolygon } from '@/types/geometry';
 
-interface OSMBuilding {
+export interface OSMBuilding {
   id: number;
   polygon: GeoPolygon;
   levels: number | null;
   height: number | null;
   name: string | null;
+}
+
+export function findNearestBuilding(
+  buildings: OSMBuilding[],
+  lat: number,
+  lng: number,
+): OSMBuilding | null {
+  if (buildings.length === 0) return null;
+
+  let best: OSMBuilding | null = null;
+  let bestDist = Infinity;
+
+  for (const b of buildings) {
+    const coords = b.polygon.coordinates[0];
+    // Compute centroid of polygon
+    const centLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+    const centLng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+    const dist = Math.hypot(centLat - lat, centLng - lng);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = b;
+    }
+  }
+
+  return best;
 }
 
 export async function queryBuildingFootprints(

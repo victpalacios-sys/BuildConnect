@@ -2,7 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useProjectStore } from '@/store/projectStore';
-import { queryBuildingFootprints } from '@/services/overpass';
+import { queryBuildingFootprints, findNearestBuilding } from '@/services/overpass';
 import { geocodeAddress } from '@/services/geocode';
 import type { GeoPolygon } from '@/types/geometry';
 
@@ -19,7 +19,7 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
   const { currentProject, updateCurrentProject } = useProjectStore();
   const [loading, setLoading] = useState(false);
 
-  const loadBuildings = useCallback(async (map: maplibregl.Map) => {
+  const loadBuildings = useCallback(async (map: maplibregl.Map, autoSelect?: boolean) => {
     const center = map.getCenter();
     setLoading(true);
     try {
@@ -45,7 +45,7 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
           source: 'buildings',
           paint: {
             'fill-color': '#3b82f6',
-            'fill-opacity': 0.15,
+            'fill-opacity': 0.04,
           },
         });
         map.addLayer({
@@ -53,17 +53,32 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
           type: 'line',
           source: 'buildings',
           paint: {
-            'line-color': '#3b82f6',
-            'line-width': 2,
+            'line-color': '#94a3b8',
+            'line-width': 1,
           },
         });
+      }
+
+      // Auto-select nearest building to map center
+      if (autoSelect && buildings.length > 0) {
+        const nearest = findNearestBuilding(buildings, center.lat, center.lng);
+        if (nearest) {
+          const src = map.getSource('selected-building') as maplibregl.GeoJSONSource | undefined;
+          if (src) {
+            src.setData({
+              type: 'FeatureCollection',
+              features: [{ type: 'Feature', properties: {}, geometry: nearest.polygon }],
+            });
+          }
+          onBuildingSelected(nearest.polygon, nearest.levels);
+        }
       }
     } catch (err) {
       console.error('Failed to load buildings:', err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onBuildingSelected]);
 
   useEffect(() => {
     if (!mapContainer.current) return;
@@ -108,7 +123,6 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
 
       map.on('load', () => {
         mapRef.current = map;
-        loadBuildings(map);
 
         // Selected building highlight layer
         map.addSource('selected-building', {
@@ -119,17 +133,18 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
           id: 'selected-building-fill',
           type: 'fill',
           source: 'selected-building',
-          paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.35 },
+          paint: { 'fill-color': '#2563eb', 'fill-opacity': 0.3 },
         });
         map.addLayer({
           id: 'selected-building-outline',
           type: 'line',
           source: 'selected-building',
-          paint: { 'line-color': '#1d4ed8', 'line-width': 3 },
+          paint: { 'line-color': '#1d4ed8', 'line-width': 3.5 },
         });
 
         // Show existing selection if project already has a footprint
-        if (currentProject?.building.footprint) {
+        const hasFootprint = !!currentProject?.building.footprint;
+        if (hasFootprint) {
           (map.getSource('selected-building') as maplibregl.GeoJSONSource).setData({
             type: 'FeatureCollection',
             features: [{
@@ -139,6 +154,9 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
             }],
           });
         }
+
+        // Load buildings; auto-select nearest if no footprint yet
+        loadBuildings(map, !hasFootprint);
       });
 
       map.on('click', 'buildings-fill', (e) => {

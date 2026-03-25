@@ -5,15 +5,17 @@ import { useProjectStore } from '@/store/projectStore';
 import { queryBuildingFootprints, findNearestBuilding } from '@/services/overpass';
 import { geocodeAddress } from '@/services/geocode';
 import type { GeoPolygon } from '@/types/geometry';
+import { createBuildingLayer, LAYER_ID } from './ThreeBuildingLayer';
 
 const STYLE_URL = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const DEFAULT_CENTER: [number, number] = [-73.985, 40.748]; // NYC fallback
 
 interface MapContainerProps {
   onBuildingSelected: (polygon: GeoPolygon, levels: number | null) => void;
+  show3D?: boolean;
 }
 
-export function MapContainer({ onBuildingSelected }: MapContainerProps) {
+export function MapContainer({ onBuildingSelected, show3D = false }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const { currentProject, updateCurrentProject } = useProjectStore();
@@ -193,6 +195,26 @@ export function MapContainer({ onBuildingSelected }: MapContainerProps) {
       if (map) map.remove();
     };
   }, [currentProject?.center, currentProject?.address, loadBuildings, onBuildingSelected, updateCurrentProject]);
+
+  // Manage 3D building layer
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    // Remove existing 3D layer
+    if (map.getLayer(LAYER_ID)) {
+      map.removeLayer(LAYER_ID);
+    }
+
+    const building = currentProject?.building;
+    if (show3D && building && building.floors.length > 0 && building.footprint) {
+      const layer = createBuildingLayer(building);
+      map.addLayer(layer);
+      map.easeTo({ pitch: 55, bearing: -20, duration: 800 });
+    } else {
+      map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
+    }
+  }, [show3D, currentProject?.building]);
 
   return (
     <div className="relative w-full h-full">

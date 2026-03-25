@@ -6,7 +6,6 @@ import { useProjectStore } from '@/store/projectStore';
 import { MapView } from '@/views/MapView';
 import { BuildingSetup } from '@/views/BuildingSetup';
 import { FloorPlanEditor } from '@/views/FloorPlanEditor';
-import { BIMViewer } from '@/views/BIMViewer';
 
 export function ProjectWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -39,7 +38,6 @@ export function ProjectWorkspace() {
           <Route path="map" element={<MapView />} />
           <Route path="setup" element={<BuildingSetup />} />
           <Route path="floor" element={<FloorPlanEditor />} />
-          <Route path="3d" element={<BIMViewer />} />
           <Route path="*" element={<Navigate to="map" replace />} />
         </Routes>
       </div>

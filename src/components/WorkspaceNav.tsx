@@ -1,4 +1,4 @@
-import { Map, Grid3x3, PenTool, Box, ArrowLeft, Settings } from 'lucide-react';
+import { Map, Grid3x3, PenTool, ArrowLeft, Settings } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 interface WorkspaceNavProps {
@@ -16,7 +16,6 @@ export function WorkspaceNav({ projectId, projectName, onEditProject }: Workspac
     { path: `${base}/map`, label: 'Map', icon: Map },
     { path: `${base}/setup`, label: 'Building', icon: Grid3x3 },
     { path: `${base}/floor`, label: 'Floor Plan', icon: PenTool },
-    { path: `${base}/3d`, label: '3D View', icon: Box },
   ];
 
   return (

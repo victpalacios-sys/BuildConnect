@@ -200,7 +200,22 @@ export function MapContainer({
           center = DEFAULT_CENTER;
         }
       } else {
-        center = DEFAULT_CENTER;
+        // Try browser geolocation (engineer is likely on-site)
+        try {
+          const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              enableHighAccuracy: false,
+              timeout: 5000,
+              maximumAge: 300000, // cache for 5 minutes
+            });
+          });
+          if (!cancelled) {
+            center = [pos.coords.longitude, pos.coords.latitude];
+          }
+        } catch {
+          // Geolocation denied or unavailable — use NYC fallback
+        }
+        center ??= DEFAULT_CENTER;
       }
 
       if (cancelled || !mapContainer.current) return;

@@ -63,17 +63,19 @@ export function createBuildingLayer(building: Building): maplibregl.CustomLayerI
       scene.add(directional);
 
       // Generate the building mesh
+      // Mesh coordinate system: X=east, Y=up, Z=south (from bim-generator)
       const meshGroup = generateBuildingMesh(building);
 
-      // The mesh is centered at origin by generateBuildingMesh.
-      // We need to position it in Mercator space.
-      // Create a transform matrix that places the mesh at the centroid
-      // and scales from meters to Mercator units.
+      // MapLibre Mercator coordinate system: X=east, Y=south, Z=up
+      // We need to swap Y↔Z: rotate -90° around X, then negate Z scale
+      // Rx(-π/2) maps (x,y,z)→(x,z,-y), then scale Z by -s gives (x*s, z*s, y*s)
+      // So mesh (east, up, south) → Mercator (east*s, south*s, up*s) ✓
+      const rotation = new THREE.Matrix4().makeRotationX(-Math.PI / 2);
       const transform = new THREE.Matrix4()
         .makeTranslation(mercatorCenter.x, mercatorCenter.y, mercatorCenter.z)
-        .scale(new THREE.Vector3(metersPerUnit, -metersPerUnit, metersPerUnit));
+        .scale(new THREE.Vector3(metersPerUnit, metersPerUnit, -metersPerUnit))
+        .multiply(rotation);
 
-      // Apply transform to the mesh group
       meshGroup.applyMatrix4(transform);
 
       scene.add(meshGroup);

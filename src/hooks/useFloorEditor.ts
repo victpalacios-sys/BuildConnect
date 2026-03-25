@@ -1,12 +1,25 @@
 import { useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Floor, Wall, Door, Window, Equipment, CableRoute, Annotation } from '@/types/building';
-import type { Point2D } from '@/types/geometry';
+import type { Floor, Wall, Door, Window, Equipment, CableRoute, Annotation, SectionCut, Building } from '@/types/building';
+import type { Point2D, GeoPoint } from '@/types/geometry';
 import { useProjectStore } from '@/store/projectStore';
 import { useEditorStore } from '@/store/editorStore';
 
+function localToGeoPoint(point: Point2D, building: Building): GeoPoint {
+  if (!building.footprint) return { lat: 0, lng: 0 };
+  const coords = building.footprint.coordinates[0];
+  const centLng = coords.reduce((s, c) => s + c[0], 0) / coords.length;
+  const centLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  const metersPerDegreeLat = 111320;
+  const metersPerDegreeLng = 111320 * Math.cos((centLat * Math.PI) / 180);
+  return {
+    lng: centLng + point.x / metersPerDegreeLng,
+    lat: centLat + point.y / metersPerDegreeLat,
+  };
+}
+
 export function useFloorEditor() {
-  const { currentProject, updateCurrentProject, activeBuildingId } = useProjectStore();
+  const { currentProject, updateCurrentProject, activeBuildingId, updateBuilding } = useProjectStore();
   const { activeFloorIndex } = useEditorStore();
 
   const building = currentProject?.buildings.find((b) => b.id === activeBuildingId) ?? null;
@@ -248,9 +261,26 @@ export function useFloorEditor() {
     [floor, pushUndo, saveFloor],
   );
 
+  const addSectionCut = useCallback(
+    async (start: Point2D, end: Point2D) => {
+      if (!building) return;
+      const sectionCut: SectionCut = {
+        id: uuidv4(),
+        label: `Section ${String.fromCharCode(65 + building.sectionCuts.length)}`,
+        start: localToGeoPoint(start, building),
+        end: localToGeoPoint(end, building),
+      };
+      await updateBuilding(building.id, {
+        sectionCuts: [...building.sectionCuts, sectionCut],
+      });
+    },
+    [building, updateBuilding],
+  );
+
   return {
     floor,
-    addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute,
+    building,
+    addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, addSectionCut,
     updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation,
     removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation,
     undo, redo, canUndo, canRedo,

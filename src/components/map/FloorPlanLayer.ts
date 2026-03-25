@@ -1,4 +1,4 @@
-import type { Floor } from '@/types/building';
+import type { Floor, SectionCut } from '@/types/building';
 import type { Point2D, GeoPolygon } from '@/types/geometry';
 import type { Map as MaplibreMap, GeoJSONSource } from 'maplibre-gl';
 
@@ -25,7 +25,7 @@ function getPolygonCentroid(polygon: GeoPolygon): [number, number] {
   return [lng, lat];
 }
 
-const LAYER_IDS = ['fp-walls', 'fp-doors', 'fp-windows', 'fp-equipment', 'fp-cables', 'fp-annotations', 'fp-selection'] as const;
+const LAYER_IDS = ['fp-walls', 'fp-doors', 'fp-windows', 'fp-equipment', 'fp-cables', 'fp-annotations', 'fp-selection', 'fp-section-cuts'] as const;
 
 export function addFloorPlanLayers(map: MaplibreMap): void {
   // Add empty GeoJSON sources for each layer
@@ -172,6 +172,44 @@ export function addFloorPlanLayers(map: MaplibreMap): void {
       },
     });
   }
+
+  // Section cut layers
+  if (!map.getSource('fp-section-cuts')) {
+    map.addSource('fp-section-cuts', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+  }
+  if (!map.getLayer('fp-section-cuts-line')) {
+    map.addLayer({
+      id: 'fp-section-cuts-line',
+      type: 'line',
+      source: 'fp-section-cuts',
+      paint: {
+        'line-color': '#ef4444',
+        'line-width': 2,
+        'line-dasharray': [4, 3],
+      },
+    });
+  }
+  if (!map.getLayer('fp-section-cuts-labels')) {
+    map.addLayer({
+      id: 'fp-section-cuts-labels',
+      type: 'symbol',
+      source: 'fp-section-cuts',
+      layout: {
+        'text-field': ['get', 'label'],
+        'text-size': 12,
+        'text-anchor': 'center',
+        'symbol-placement': 'line-center',
+      },
+      paint: {
+        'text-color': '#ef4444',
+        'text-halo-color': '#ffffff',
+        'text-halo-width': 2,
+      },
+    });
+  }
 }
 
 export function updateFloorPlanData(
@@ -259,6 +297,21 @@ export function updateFloorPlanData(
   updateSource(map, 'fp-annotations', annotFeatures);
 }
 
+export function updateSectionCutData(map: MaplibreMap, sectionCuts: SectionCut[]): void {
+  const features: GeoJSON.Feature[] = sectionCuts.map((cut) => ({
+    type: 'Feature' as const,
+    properties: { id: cut.id, label: cut.label },
+    geometry: {
+      type: 'LineString' as const,
+      coordinates: [
+        [cut.start.lng, cut.start.lat],
+        [cut.end.lng, cut.end.lat],
+      ],
+    },
+  }));
+  updateSource(map, 'fp-section-cuts', features);
+}
+
 function updateSource(map: MaplibreMap, sourceId: string, features: GeoJSON.Feature[]): void {
   const source = map.getSource(sourceId);
   if (source && 'setData' in source) {
@@ -284,14 +337,16 @@ export function setSelectionHighlight(
 }
 
 const SELECTION_LAYER_IDS = ['fp-selection-circle', 'fp-selection-line'] as const;
+const SECTION_CUT_LAYER_IDS = ['fp-section-cuts-line', 'fp-section-cuts-labels'] as const;
 
 export function removeFloorPlanLayers(map: MaplibreMap): void {
-  for (const id of [...LAYER_IDS, ...SELECTION_LAYER_IDS]) {
+  for (const id of [...LAYER_IDS, ...SELECTION_LAYER_IDS, ...SECTION_CUT_LAYER_IDS]) {
     if (map.getLayer(id)) map.removeLayer(id);
   }
   for (const id of LAYER_IDS) {
     if (map.getSource(id)) map.removeSource(id);
   }
+  if (map.getSource('fp-section-cuts')) map.removeSource('fp-section-cuts');
 }
 
 export function hasFloorPlanLayers(map: MaplibreMap): boolean {

@@ -47,6 +47,7 @@ interface UseMapInteractionProps {
   onAnnotationPlaced: (worldPoint: Point2D) => void;
   onEquipmentPlaced: (worldPoint: Point2D) => void;
   onCableRouteCreated: (points: Point2D[]) => void;
+  onSectionCutCreated?: (start: Point2D, end: Point2D) => void;
   onElementSelected?: (element: SelectedElement | null) => void;
 }
 
@@ -59,6 +60,7 @@ export function useMapInteraction({
   onAnnotationPlaced,
   onEquipmentPlaced,
   onCableRouteCreated,
+  onSectionCutCreated,
   onElementSelected,
 }: UseMapInteractionProps) {
   const { activeTool, snapEnabled, gridSize } = useEditorStore();
@@ -147,11 +149,21 @@ export function useMapInteraction({
         cablePoints.current.push(point);
         setIsDrawing(true);
         break;
+      case 'section-cut':
+        if (!wallStart.current) {
+          wallStart.current = point;
+          setIsDrawing(true);
+        } else {
+          onSectionCutCreated?.(wallStart.current, point);
+          wallStart.current = null;
+          setIsDrawing(false);
+        }
+        break;
     }
-  }, [activeTool, getLocalPoint, getReticlePoint, onWallCreated, onDoorPlaced, onWindowPlaced, onAnnotationPlaced, onEquipmentPlaced]);
+  }, [activeTool, getLocalPoint, getReticlePoint, onWallCreated, onDoorPlaced, onWindowPlaced, onAnnotationPlaced, onEquipmentPlaced, onSectionCutCreated]);
 
   const handleFinishDrawing = useCallback(() => {
-    if (activeTool === 'wall') {
+    if (activeTool === 'wall' || activeTool === 'section-cut') {
       wallStart.current = null;
       setIsDrawing(false);
     }
@@ -188,6 +200,9 @@ export function useMapInteraction({
     if (activeTool === 'window') return 'Tap to place window';
     if (activeTool === 'equipment') return 'Tap to place equipment';
     if (activeTool === 'annotate') return 'Tap to place note';
+    if (activeTool === 'section-cut') {
+      return isDrawing ? 'Tap to place cut end point' : 'Tap to place cut start point';
+    }
     return '';
   }, [activeTool, isDrawing]);
 

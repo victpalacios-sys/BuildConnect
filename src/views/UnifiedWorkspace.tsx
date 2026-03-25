@@ -1,22 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import type { Map as MaplibreMap } from 'maplibre-gl';
 import { ArrowLeft, Menu } from 'lucide-react';
 import { useProjectStore } from '@/store/projectStore';
 import { useEditorStore } from '@/store/editorStore';
 import { useResponsive } from '@/hooks/useResponsive';
+import { useInputMode } from '@/hooks/useInputMode';
+import { useFloorEditor } from '@/hooks/useFloorEditor';
+import { useMapInteraction } from '@/hooks/useMapInteraction';
 import { SidePanel } from '@/components/layout/SidePanel';
 import { FloorSelector } from '@/components/layout/FloorSelector';
 import { ProjectInfoPanel } from '@/components/panels/ProjectInfoPanel';
 import { BuildingPanel } from '@/components/panels/BuildingPanel';
 import { ElementPropertiesPanel } from '@/components/panels/ElementPropertiesPanel';
 import { MapContainer } from '@/components/map/MapContainer';
+import { Reticle } from '@/components/map/Reticle';
+import { DrawingToolbar } from '@/components/toolbar/DrawingToolbar';
 
 export function UnifiedWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const breakpoint = useResponsive();
   const { currentProject, openProject, loading, activeBuildingId, setActiveBuilding } = useProjectStore();
-  const { viewMode, setViewMode, activeFloorIndex, setActiveFloor } = useEditorStore();
+  const { viewMode, setViewMode, activeFloorIndex, setActiveFloor, activeTool } = useEditorStore();
+  const inputMode = useInputMode();
+  const mapRef = useRef<MaplibreMap | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
 
   useEffect(() => {
@@ -43,6 +51,27 @@ export function UnifiedWorkspace() {
   const activeBuilding = currentProject.buildings.find((b) => b.id === activeBuildingId);
   const activeFloor = activeBuilding?.floors[activeFloorIndex] ?? null;
   const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
+
+  const { addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, undo, redo, canUndo, canRedo } = useFloorEditor();
+
+  const {
+    handleMapClick,
+    handleReticlePlace,
+    getReticleHint,
+  } = useMapInteraction({
+    mapRef,
+    buildingFootprint: activeBuilding?.footprint ?? null,
+    onWallCreated: addWall,
+    onDoorPlaced: addDoor,
+    onWindowPlaced: addWindow,
+    onAnnotationPlaced: addAnnotation,
+    onEquipmentPlaced: addEquipment,
+    onCableRouteCreated: addCableRoute,
+  });
+
+  const isPlacementTool = !['select', 'pan', 'photo', 'section-cut'].includes(activeTool);
+  const showReticle = inputMode === 'touch' && viewMode === 'floor' && isPlacementTool;
+  const showToolbar = viewMode === 'floor';
 
   let panelTitle = 'Project';
   let panelContent = <ProjectInfoPanel />;
@@ -96,10 +125,25 @@ export function UnifiedWorkspace() {
               setActiveBuilding(buildingId);
               setViewMode('building');
             }}
+            onMapClick={viewMode === 'floor' ? handleMapClick : undefined}
             activeFloor={viewMode === 'floor' ? activeFloor : null}
             activeBuildingFootprint={activeBuilding?.footprint ?? null}
             viewMode={viewMode}
+            mapRef={mapRef}
           />
+          <Reticle
+            visible={showReticle}
+            hint={getReticleHint()}
+            onPlace={handleReticlePlace}
+          />
+          {showToolbar && (
+            <DrawingToolbar
+              onUndo={undo}
+              onRedo={redo}
+              canUndo={canUndo}
+              canRedo={canRedo}
+            />
+          )}
         </div>
 
         {breakpoint === 'desktop' ? (

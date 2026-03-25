@@ -6,10 +6,10 @@ import { useProjectStore } from '@/store/projectStore';
 import { useEditorStore } from '@/store/editorStore';
 
 export function useFloorEditor() {
-  const { currentProject, updateCurrentProject } = useProjectStore();
+  const { currentProject, updateCurrentProject, activeBuildingId } = useProjectStore();
   const { activeFloorIndex } = useEditorStore();
 
-  const building = currentProject?.building;
+  const building = currentProject?.buildings.find((b) => b.id === activeBuildingId) ?? null;
   const floor = building?.floors[activeFloorIndex] ?? null;
 
   const undoStack = useRef<Floor[]>([]);
@@ -20,14 +20,15 @@ export function useFloorEditor() {
 
   const saveFloor = useCallback(
     async (updatedFloor: Floor) => {
-      if (!building || !currentProject) return;
+      if (!building || !currentProject || !activeBuildingId) return;
       const floors = [...building.floors];
       floors[activeFloorIndex] = updatedFloor;
-      await updateCurrentProject({
-        building: { ...building, floors },
-      });
+      const buildings = currentProject.buildings.map((b) =>
+        b.id === activeBuildingId ? { ...b, floors } : b,
+      );
+      await updateCurrentProject({ buildings });
     },
-    [building, currentProject, activeFloorIndex, updateCurrentProject],
+    [building, currentProject, activeBuildingId, activeFloorIndex, updateCurrentProject],
   );
 
   const pushUndo = useCallback(() => {

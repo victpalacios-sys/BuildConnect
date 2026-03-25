@@ -18,10 +18,12 @@ interface MapContainerProps {
   allowFootprintSelection?: boolean; // only true during add/edit building flow
   onBuildingFootprintSelected?: (polygon: GeoPolygon, levels: number | null) => void;
   onMapBuildingClicked?: (buildingId: string) => void;
+  onMapClick?: (e: { lngLat: { lng: number; lat: number } }) => void;
   show3D?: boolean;
   activeFloor?: Floor | null;
   activeBuildingFootprint?: GeoPolygon | null;
   viewMode?: ViewMode;
+  mapRef?: React.MutableRefObject<maplibregl.Map | null>;
 }
 
 export function MapContainer({
@@ -29,10 +31,12 @@ export function MapContainer({
   allowFootprintSelection = false,
   onBuildingFootprintSelected,
   onMapBuildingClicked,
+  onMapClick,
   show3D = false,
   activeFloor = null,
   activeBuildingFootprint = null,
   viewMode = 'site',
+  mapRef: externalMapRef,
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -169,12 +173,20 @@ export function MapContainer({
 
       map.on('load', () => {
         mapRef.current = map;
+        if (externalMapRef) externalMapRef.current = map;
 
         // Project buildings highlight layer (replaces old single selected-building layer)
         renderProjectBuildings(map);
 
         // Load Overpass buildings
         loadBuildings(map);
+      });
+
+      // General map click — forwarded to parent for drawing tools
+      map.on('click', (e) => {
+        if (onMapClick) {
+          onMapClick({ lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat } });
+        }
       });
 
       // Overpass building click — only when footprint selection is allowed

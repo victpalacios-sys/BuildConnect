@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from 'react';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import type { Point2D, GeoPolygon } from '@/types/geometry';
 import { useEditorStore } from '@/store/editorStore';
+import { QUERYABLE_LAYER_IDS, layerIdToElementType } from '@/components/map/FloorPlanLayer';
+import type { ElementType } from '@/components/panels/ElementPropertiesPanel';
 
 /**
  * Convert [lng, lat] to local meter coordinates relative to building centroid.
@@ -30,6 +32,12 @@ function snapToGrid(point: Point2D, gridSize: number): Point2D {
   };
 }
 
+export interface SelectedElement {
+  id: string;
+  type: ElementType;
+  feature: GeoJSON.Feature;
+}
+
 interface UseMapInteractionProps {
   mapRef: React.RefObject<MaplibreMap | null>;
   buildingFootprint: GeoPolygon | null;
@@ -39,6 +47,7 @@ interface UseMapInteractionProps {
   onAnnotationPlaced: (worldPoint: Point2D) => void;
   onEquipmentPlaced: (worldPoint: Point2D) => void;
   onCableRouteCreated: (points: Point2D[]) => void;
+  onElementSelected?: (element: SelectedElement | null) => void;
 }
 
 export function useMapInteraction({
@@ -50,6 +59,7 @@ export function useMapInteraction({
   onAnnotationPlaced,
   onEquipmentPlaced,
   onCableRouteCreated,
+  onElementSelected,
 }: UseMapInteractionProps) {
   const { activeTool, snapEnabled, gridSize } = useEditorStore();
   const wallStart = useRef<Point2D | null>(null);
@@ -71,6 +81,42 @@ export function useMapInteraction({
     const center = map.unproject([canvas.width / (2 * devicePixelRatio), canvas.height / (2 * devicePixelRatio)]);
     return getLocalPoint(center);
   }, [mapRef, getLocalPoint]);
+
+  const handleSelect = useCallback((e: { lngLat: { lng: number; lat: number }; point: { x: number; y: number } }) => {
+    const map = mapRef.current;
+    if (!map || !onElementSelected) return;
+
+    // Query rendered features at the click point across all floor plan layers
+    const existingLayers = QUERYABLE_LAYER_IDS.filter((id) => map.getLayer(id));
+    if (existingLayers.length === 0) {
+      onElementSelected(null);
+      return;
+    }
+
+    const features = map.queryRenderedFeatures(
+      [e.point.x, e.point.y],
+      { layers: existingLayers as unknown as string[] },
+    );
+
+    if (features.length > 0) {
+      const feature = features[0];
+      const layerId = feature.layer?.id;
+      const elementType = layerId ? layerIdToElementType(layerId) : null;
+      const elementId = feature.properties?.id as string | undefined;
+
+      if (elementType && elementId) {
+        onElementSelected({
+          id: elementId,
+          type: elementType,
+          feature: feature as unknown as GeoJSON.Feature,
+        });
+        return;
+      }
+    }
+
+    // Clicked on empty space - deselect
+    onElementSelected(null);
+  }, [mapRef, onElementSelected]);
 
   const handlePlace = useCallback((lngLat?: { lng: number; lat: number }) => {
     const point = lngLat ? getLocalPoint(lngLat) : getReticlePoint();
@@ -116,10 +162,16 @@ export function useMapInteraction({
     }
   }, [activeTool, onCableRouteCreated]);
 
-  const handleMapClick = useCallback((e: { lngLat: { lng: number; lat: number } }) => {
-    if (activeTool === 'select' || activeTool === 'pan') return;
+  const handleMapClick = useCallback((e: { lngLat: { lng: number; lat: number }; point?: { x: number; y: number } }) => {
+    if (activeTool === 'select') {
+      if (e.point) {
+        handleSelect(e as { lngLat: { lng: number; lat: number }; point: { x: number; y: number } });
+      }
+      return;
+    }
+    if (activeTool === 'pan') return;
     handlePlace(e.lngLat);
-  }, [activeTool, handlePlace]);
+  }, [activeTool, handlePlace, handleSelect]);
 
   const handleReticlePlace = useCallback(() => {
     handlePlace();

@@ -18,7 +18,7 @@ interface MapContainerProps {
   allowFootprintSelection?: boolean; // only true during add/edit building flow
   onBuildingFootprintSelected?: (polygon: GeoPolygon, levels: number | null) => void;
   onMapBuildingClicked?: (buildingId: string) => void;
-  onMapClick?: (e: { lngLat: { lng: number; lat: number } }) => void;
+  onMapClick?: (e: { lngLat: { lng: number; lat: number }; point?: { x: number; y: number } }) => void;
   show3D?: boolean;
   activeFloor?: Floor | null;
   activeBuildingFootprint?: GeoPolygon | null;
@@ -185,7 +185,7 @@ export function MapContainer({
       // General map click — forwarded to parent for drawing tools
       map.on('click', (e) => {
         if (onMapClick) {
-          onMapClick({ lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat } });
+          onMapClick({ lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat }, point: { x: e.point.x, y: e.point.y } });
         }
       });
 

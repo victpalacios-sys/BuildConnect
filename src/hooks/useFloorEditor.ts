@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import type { Floor, Wall, Door, Equipment, CableRoute, Annotation } from '@/types/building';
+import type { Floor, Wall, Door, Window, Equipment, CableRoute, Annotation } from '@/types/building';
 import type { Point2D } from '@/types/geometry';
 import { useProjectStore } from '@/store/projectStore';
 import { useEditorStore } from '@/store/editorStore';
@@ -121,7 +121,140 @@ export function useFloorEditor() {
     [floor, pushUndo, saveFloor],
   );
 
-  return { floor, addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, undo, redo, canUndo, canRedo };
+  // --- Update methods ---
+
+  const updateWall = useCallback(
+    async (wallId: string, changes: Partial<Wall>) => {
+      if (!floor) return;
+      pushUndo();
+      const walls = floor.walls.map((w) => (w.id === wallId ? { ...w, ...changes } : w));
+      await saveFloor({ ...floor, walls });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const updateDoor = useCallback(
+    async (doorId: string, changes: Partial<Door>) => {
+      if (!floor) return;
+      pushUndo();
+      const doors = floor.doors.map((d) => (d.id === doorId ? { ...d, ...changes } : d));
+      await saveFloor({ ...floor, doors });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const updateWindow = useCallback(
+    async (windowId: string, changes: Partial<Window>) => {
+      if (!floor) return;
+      pushUndo();
+      const windows = floor.windows.map((w) => (w.id === windowId ? { ...w, ...changes } : w));
+      await saveFloor({ ...floor, windows });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const updateEquipment = useCallback(
+    async (equipmentId: string, changes: Partial<Equipment>) => {
+      if (!floor) return;
+      pushUndo();
+      const equipment = floor.equipment.map((e) => (e.id === equipmentId ? { ...e, ...changes } : e));
+      await saveFloor({ ...floor, equipment });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const updateCableRoute = useCallback(
+    async (routeId: string, changes: Partial<CableRoute>) => {
+      if (!floor) return;
+      pushUndo();
+      const cableRoutes = floor.cableRoutes.map((r) => (r.id === routeId ? { ...r, ...changes } : r));
+      await saveFloor({ ...floor, cableRoutes });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const updateAnnotation = useCallback(
+    async (annotationId: string, changes: Partial<Annotation>) => {
+      if (!floor) return;
+      pushUndo();
+      const annotations = floor.annotations.map((a) => (a.id === annotationId ? { ...a, ...changes } : a));
+      await saveFloor({ ...floor, annotations });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  // --- Remove methods ---
+
+  const removeWall = useCallback(
+    async (wallId: string) => {
+      if (!floor) return;
+      pushUndo();
+      const walls = floor.walls.filter((w) => w.id !== wallId);
+      // Also remove doors and windows on this wall
+      const doors = floor.doors.filter((d) => d.wallId !== wallId);
+      const windows = floor.windows.filter((w) => w.wallId !== wallId);
+      await saveFloor({ ...floor, walls, doors, windows });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const removeDoor = useCallback(
+    async (doorId: string) => {
+      if (!floor) return;
+      pushUndo();
+      const doors = floor.doors.filter((d) => d.id !== doorId);
+      await saveFloor({ ...floor, doors });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const removeWindow = useCallback(
+    async (windowId: string) => {
+      if (!floor) return;
+      pushUndo();
+      const windows = floor.windows.filter((w) => w.id !== windowId);
+      await saveFloor({ ...floor, windows });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const removeEquipment = useCallback(
+    async (equipmentId: string) => {
+      if (!floor) return;
+      pushUndo();
+      const equipment = floor.equipment.filter((e) => e.id !== equipmentId);
+      await saveFloor({ ...floor, equipment });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const removeCableRoute = useCallback(
+    async (routeId: string) => {
+      if (!floor) return;
+      pushUndo();
+      const cableRoutes = floor.cableRoutes.filter((r) => r.id !== routeId);
+      await saveFloor({ ...floor, cableRoutes });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  const removeAnnotation = useCallback(
+    async (annotationId: string) => {
+      if (!floor) return;
+      pushUndo();
+      const annotations = floor.annotations.filter((a) => a.id !== annotationId);
+      await saveFloor({ ...floor, annotations });
+    },
+    [floor, pushUndo, saveFloor],
+  );
+
+  return {
+    floor,
+    addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute,
+    updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation,
+    removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation,
+    undo, redo, canUndo, canRedo,
+  };
 }
 
 function findNearestWall(walls: Wall[], point: Point2D, maxDist: number = 1.0) {

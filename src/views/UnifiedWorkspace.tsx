@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Map as MaplibreMap } from 'maplibre-gl';
 import { ArrowLeft, Menu } from 'lucide-react';
@@ -8,14 +8,18 @@ import { useResponsive } from '@/hooks/useResponsive';
 import { useInputMode } from '@/hooks/useInputMode';
 import { useFloorEditor } from '@/hooks/useFloorEditor';
 import { useMapInteraction } from '@/hooks/useMapInteraction';
+import type { SelectedElement } from '@/hooks/useMapInteraction';
 import { SidePanel } from '@/components/layout/SidePanel';
 import { FloorSelector } from '@/components/layout/FloorSelector';
 import { ProjectInfoPanel } from '@/components/panels/ProjectInfoPanel';
 import { BuildingPanel } from '@/components/panels/BuildingPanel';
 import { ElementPropertiesPanel } from '@/components/panels/ElementPropertiesPanel';
+import type { ElementType } from '@/components/panels/ElementPropertiesPanel';
 import { MapContainer } from '@/components/map/MapContainer';
+import { setSelectionHighlight } from '@/components/map/FloorPlanLayer';
 import { Reticle } from '@/components/map/Reticle';
 import { DrawingToolbar } from '@/components/toolbar/DrawingToolbar';
+import type { Wall, Door, Window, Equipment, CableRoute, Annotation } from '@/types/building';
 
 export function UnifiedWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -26,12 +30,21 @@ export function UnifiedWorkspace() {
   const inputMode = useInputMode();
   const mapRef = useRef<MaplibreMap | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
 
   useEffect(() => {
     if (projectId && currentProject?.id !== projectId) {
       openProject(projectId);
     }
   }, [projectId, currentProject?.id, openProject]);
+
+  // Clear selection when switching floors or view modes
+  useEffect(() => {
+    setSelectedElement(null);
+    if (mapRef.current) {
+      setSelectionHighlight(mapRef.current, null);
+    }
+  }, [activeFloorIndex, viewMode]);
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading project...</div>;
@@ -52,7 +65,19 @@ export function UnifiedWorkspace() {
   const activeFloor = activeBuilding?.floors[activeFloorIndex] ?? null;
   const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
-  const { addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, undo, redo, canUndo, canRedo } = useFloorEditor();
+  const {
+    addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute,
+    updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation,
+    removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation,
+    undo, redo, canUndo, canRedo,
+  } = useFloorEditor();
+
+  const handleElementSelected = useCallback((element: SelectedElement | null) => {
+    setSelectedElement(element);
+    if (mapRef.current) {
+      setSelectionHighlight(mapRef.current, element?.feature ?? null);
+    }
+  }, []);
 
   const {
     handleMapClick,
@@ -67,7 +92,55 @@ export function UnifiedWorkspace() {
     onAnnotationPlaced: addAnnotation,
     onEquipmentPlaced: addEquipment,
     onCableRouteCreated: addCableRoute,
+    onElementSelected: handleElementSelected,
   });
+
+  // Resolve selected element data from the floor
+  const selectedElementType: ElementType | null = selectedElement?.type ?? null;
+  const selectedElementData: Wall | Door | Window | Equipment | CableRoute | Annotation | null = (() => {
+    if (!selectedElement || !activeFloor) return null;
+    const { id, type } = selectedElement;
+    switch (type) {
+      case 'wall': return activeFloor.walls.find((w) => w.id === id) ?? null;
+      case 'door': return activeFloor.doors.find((d) => d.id === id) ?? null;
+      case 'window': return activeFloor.windows.find((w) => w.id === id) ?? null;
+      case 'equipment': return activeFloor.equipment.find((e) => e.id === id) ?? null;
+      case 'cable': return activeFloor.cableRoutes.find((r) => r.id === id) ?? null;
+      case 'annotation': return activeFloor.annotations.find((a) => a.id === id) ?? null;
+      default: return null;
+    }
+  })();
+
+  const handleElementUpdate = useCallback((changes: Record<string, unknown>) => {
+    if (!selectedElement) return;
+    const { id, type } = selectedElement;
+    switch (type) {
+      case 'wall': updateWall(id, changes as Partial<Wall>); break;
+      case 'door': updateDoor(id, changes as Partial<Door>); break;
+      case 'window': updateWindow(id, changes as Partial<Window>); break;
+      case 'equipment': updateEquipment(id, changes as Partial<Equipment>); break;
+      case 'cable': updateCableRoute(id, changes as Partial<CableRoute>); break;
+      case 'annotation': updateAnnotation(id, changes as Partial<Annotation>); break;
+    }
+  }, [selectedElement, updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation]);
+
+  const handleElementDelete = useCallback(() => {
+    if (!selectedElement) return;
+    const { id, type } = selectedElement;
+    switch (type) {
+      case 'wall': removeWall(id); break;
+      case 'door': removeDoor(id); break;
+      case 'window': removeWindow(id); break;
+      case 'equipment': removeEquipment(id); break;
+      case 'cable': removeCableRoute(id); break;
+      case 'annotation': removeAnnotation(id); break;
+    }
+    handleElementSelected(null);
+  }, [selectedElement, removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation, handleElementSelected]);
+
+  const handleDeselect = useCallback(() => {
+    handleElementSelected(null);
+  }, [handleElementSelected]);
 
   const isPlacementTool = !['select', 'pan', 'photo', 'section-cut'].includes(activeTool);
   const showReticle = inputMode === 'touch' && viewMode === 'floor' && isPlacementTool;
@@ -78,8 +151,16 @@ export function UnifiedWorkspace() {
 
   if (activeBuildingId && activeBuilding) {
     if (viewMode === 'floor') {
-      panelTitle = activeBuilding.name || 'Building';
-      panelContent = <ElementPropertiesPanel />;
+      panelTitle = selectedElementData ? 'Properties' : activeBuilding.name || 'Building';
+      panelContent = (
+        <ElementPropertiesPanel
+          elementType={selectedElementType}
+          elementData={selectedElementData}
+          onUpdate={handleElementUpdate}
+          onDelete={handleElementDelete}
+          onDeselect={handleDeselect}
+        />
+      );
     } else {
       panelTitle = activeBuilding.name || 'Building';
       panelContent = (

@@ -8,6 +8,24 @@ import { geoPolygonToLocal, generateFloors } from '@/services/building-generator
 import type { Building } from '@/types/building';
 import type { GeoPolygon } from '@/types/geometry';
 
+/** Create a default rectangular footprint (~20m x 15m) centered on a geo point */
+function createDefaultFootprint(lat: number, lng: number): GeoPolygon {
+  const mPerDegreeLat = 111320;
+  const mPerDegreeLng = 111320 * Math.cos((lat * Math.PI) / 180);
+  const halfW = 10 / mPerDegreeLng; // 10m half-width
+  const halfH = 7.5 / mPerDegreeLat; // 7.5m half-height
+  return {
+    type: 'Polygon',
+    coordinates: [[
+      [lng - halfW, lat - halfH],
+      [lng + halfW, lat - halfH],
+      [lng + halfW, lat + halfH],
+      [lng - halfW, lat + halfH],
+      [lng - halfW, lat - halfH],
+    ]],
+  };
+}
+
 interface AddBuildingPanelProps {
   onSave: (building: Building) => void;
   onCancel: () => void;
@@ -40,15 +58,17 @@ export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selected
 
         // Auto-select nearest building footprint from already-loaded OSM data
         if (onAutoSelectFootprint) {
+          let found = false;
           if (osmBuildings && osmBuildings.length > 0) {
             const nearest = findNearestBuilding(osmBuildings, result.lat, result.lng);
             if (nearest) {
               onAutoSelectFootprint(nearest.polygon, nearest.levels);
-            } else {
-              setAutoSelectFailed(true);
+              found = true;
             }
-          } else {
-            // No OSM buildings available (Overpass may have failed)
+          }
+          if (!found) {
+            // Overpass failed or no nearby building found — use default rectangle
+            onAutoSelectFootprint(createDefaultFootprint(result.lat, result.lng), null);
             setAutoSelectFailed(true);
           }
         }

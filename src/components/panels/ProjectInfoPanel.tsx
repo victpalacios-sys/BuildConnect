@@ -38,7 +38,11 @@ function statusColor(status: ProjectStatus): string {
   }
 }
 
-export function ProjectInfoPanel() {
+interface ProjectInfoPanelProps {
+  onAddBuilding?: () => void;
+}
+
+export function ProjectInfoPanel({ onAddBuilding }: ProjectInfoPanelProps) {
   const { currentProject, updateCurrentProject, deleteProject, setActiveBuilding } =
     useProjectStore();
   const { setViewMode } = useEditorStore();
@@ -300,7 +304,17 @@ export function ProjectInfoPanel() {
 
       {/* Buildings */}
       <div>
-        <h4 className="text-xs text-gray-500 font-medium mb-2">Buildings</h4>
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-xs text-gray-500 font-medium">Buildings</h4>
+          {onAddBuilding && (
+            <button
+              onClick={onAddBuilding}
+              className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-700"
+            >
+              <Plus className="w-3 h-3" /> Add Building
+            </button>
+          )}
+        </div>
         {currentProject.buildings.length === 0 ? (
           <p className="text-xs text-gray-400">No buildings yet</p>
         ) : (

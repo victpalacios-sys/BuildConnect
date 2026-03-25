@@ -36,15 +36,23 @@ export function createExteriorWalls(footprintLocal: Point2D[], thickness: number
   return walls;
 }
 
-export function generateFloors(building: Building): Floor[] {
+export function generateFloors(building: Building, count: number): Floor[] {
   const floors: Floor[] = [];
-  const exteriorWalls = createExteriorWalls(building.footprintLocal);
+  const exteriorWalls = building.footprintLocal.length > 0
+    ? createExteriorWalls(building.footprintLocal)
+    : [];
 
-  for (let i = 0; i < building.floorCount; i++) {
+  for (let i = 0; i < count; i++) {
+    const level = i;
+    const isAbove = level >= building.groundFloorLevel;
+    const label = isAbove ? (level === 0 ? 'Ground Floor' : `Floor ${level}`) : `Lower Level ${Math.abs(level)}`;
+    const shortLabel = isAbove ? String(level + 1) : String(level);
+
     floors.push({
       id: uuidv4(),
-      level: i,
-      label: i === 0 ? 'Ground Floor' : `Floor ${i}`,
+      level,
+      label,
+      shortLabel,
       height: building.defaultFloorHeight,
       walls: exteriorWalls.map((w) => ({ ...w, id: uuidv4() })),
       doors: [],

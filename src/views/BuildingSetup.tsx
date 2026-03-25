@@ -36,10 +36,9 @@ export function BuildingSetup() {
       footprintLocal,
       floors: generateFloors({
         ...building,
-        floorCount,
         defaultFloorHeight: floorHeight,
         footprintLocal,
-      }),
+      }, floorCount),
     };
 
     await updateCurrentProject({ building: updatedBuilding });

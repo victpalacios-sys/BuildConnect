@@ -12,6 +12,7 @@ import type { SelectedElement } from '@/hooks/useMapInteraction';
 import { SidePanel } from '@/components/layout/SidePanel';
 import { FloorSelector } from '@/components/layout/FloorSelector';
 import { ProjectInfoPanel } from '@/components/panels/ProjectInfoPanel';
+import { AddBuildingPanel } from '@/components/panels/AddBuildingPanel';
 import { BuildingPanel } from '@/components/panels/BuildingPanel';
 import { ElementPropertiesPanel } from '@/components/panels/ElementPropertiesPanel';
 import type { ElementType } from '@/components/panels/ElementPropertiesPanel';
@@ -19,18 +20,22 @@ import { MapContainer } from '@/components/map/MapContainer';
 import { setSelectionHighlight } from '@/components/map/FloorPlanLayer';
 import { Reticle } from '@/components/map/Reticle';
 import { DrawingToolbar } from '@/components/toolbar/DrawingToolbar';
-import type { Wall, Door, Window, Equipment, CableRoute, Annotation } from '@/types/building';
+import type { Building, Wall, Door, Window, Equipment, CableRoute, Annotation } from '@/types/building';
+import type { GeoPolygon } from '@/types/geometry';
 
 export function UnifiedWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const breakpoint = useResponsive();
-  const { currentProject, openProject, loading, activeBuildingId, setActiveBuilding } = useProjectStore();
+  const { currentProject, openProject, loading, activeBuildingId, setActiveBuilding, addBuilding } = useProjectStore();
   const { viewMode, setViewMode, activeFloorIndex, setActiveFloor, activeTool } = useEditorStore();
   const inputMode = useInputMode();
   const mapRef = useRef<MaplibreMap | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
+  const [addingBuilding, setAddingBuilding] = useState(false);
+  const [pendingFootprint, setPendingFootprint] = useState<GeoPolygon | null>(null);
+  const [pendingLevels, setPendingLevels] = useState<number | null>(null);
 
   useEffect(() => {
     if (projectId && currentProject?.id !== projectId) {
@@ -146,10 +151,52 @@ export function UnifiedWorkspace() {
   const showReticle = inputMode === 'touch' && viewMode === 'floor' && isPlacementTool;
   const showToolbar = viewMode === 'floor';
 
-  let panelTitle = 'Project';
-  let panelContent = <ProjectInfoPanel />;
+  const handleStartAddBuilding = useCallback(() => {
+    setAddingBuilding(true);
+    setPendingFootprint(null);
+    setPendingLevels(null);
+    setActiveBuilding(null);
+    setPanelOpen(true);
+  }, [setActiveBuilding]);
 
-  if (activeBuildingId && activeBuilding) {
+  const handleFootprintSelected = useCallback((polygon: GeoPolygon, levels: number | null) => {
+    setPendingFootprint(polygon);
+    setPendingLevels(levels);
+  }, []);
+
+  const handleAddBuildingSave = useCallback(async (building: Building) => {
+    await addBuilding(building);
+    setAddingBuilding(false);
+    setPendingFootprint(null);
+    setPendingLevels(null);
+    setViewMode('building');
+  }, [addBuilding, setViewMode]);
+
+  const handleAddBuildingCancel = useCallback(() => {
+    setAddingBuilding(false);
+    setPendingFootprint(null);
+    setPendingLevels(null);
+  }, []);
+
+  const handleFlyTo = useCallback((lat: number, lng: number) => {
+    mapRef.current?.flyTo({ center: [lng, lat], zoom: 17 });
+  }, []);
+
+  let panelTitle = 'Project';
+  let panelContent = <ProjectInfoPanel onAddBuilding={handleStartAddBuilding} />;
+
+  if (addingBuilding) {
+    panelTitle = 'Add Building';
+    panelContent = (
+      <AddBuildingPanel
+        onSave={handleAddBuildingSave}
+        onCancel={handleAddBuildingCancel}
+        selectedFootprint={pendingFootprint}
+        selectedLevels={pendingLevels}
+        onFlyTo={handleFlyTo}
+      />
+    );
+  } else if (activeBuildingId && activeBuilding) {
     if (viewMode === 'floor') {
       panelTitle = selectedElementData ? 'Properties' : activeBuilding.name || 'Building';
       panelContent = (
@@ -201,7 +248,8 @@ export function UnifiedWorkspace() {
         <div className="flex-1 relative">
           <MapContainer
             mapTileOpacity={viewMode === 'floor' ? 0.1 : 1.0}
-            allowFootprintSelection={false}
+            allowFootprintSelection={addingBuilding}
+            onBuildingFootprintSelected={addingBuilding ? handleFootprintSelected : undefined}
             onMapBuildingClicked={(buildingId) => {
               setActiveBuilding(buildingId);
               setViewMode('building');

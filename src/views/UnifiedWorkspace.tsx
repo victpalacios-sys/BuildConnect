@@ -58,7 +58,7 @@ export function UnifiedWorkspace() {
 
   const handleElementSelected = useCallback((element: SelectedElement | null) => {
     setSelectedElement(element);
-    if (mapRef.current) {
+    if (mapRef.current && mapRef.current.isStyleLoaded()) {
       setSelectionHighlight(mapRef.current, element?.feature ?? null);
     }
   }, []);
@@ -83,7 +83,7 @@ export function UnifiedWorkspace() {
   // Clear selection when switching floors or view modes
   useEffect(() => {
     setSelectedElement(null);
-    if (mapRef.current) {
+    if (mapRef.current && mapRef.current.isStyleLoaded()) {
       setSelectionHighlight(mapRef.current, null);
     }
   }, [activeFloorIndex, viewMode]);

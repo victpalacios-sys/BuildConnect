@@ -17,7 +17,8 @@ import { BuildingPanel } from '@/components/panels/BuildingPanel';
 import { ElementPropertiesPanel } from '@/components/panels/ElementPropertiesPanel';
 import type { ElementType } from '@/components/panels/ElementPropertiesPanel';
 import { MapContainer } from '@/components/map/MapContainer';
-import { setSelectionHighlight } from '@/components/map/FloorPlanLayer';
+import { setSelectionHighlight, updateSectionCutData } from '@/components/map/FloorPlanLayer';
+import { CrossSectionPanel } from '@/components/panels/CrossSectionPanel';
 import { Reticle } from '@/components/map/Reticle';
 import { DrawingToolbar } from '@/components/toolbar/DrawingToolbar';
 import type { Building, Wall, Door, Window, Equipment, CableRoute, Annotation } from '@/types/building';
@@ -33,6 +34,7 @@ export function UnifiedWorkspace() {
   const mapRef = useRef<MaplibreMap | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedElement, setSelectedElement] = useState<SelectedElement | null>(null);
+  const [activeSectionCutId, setActiveSectionCutId] = useState<string | null>(null);
   const [addingBuilding, setAddingBuilding] = useState(false);
   const [pendingFootprint, setPendingFootprint] = useState<GeoPolygon | null>(null);
   const [pendingLevels, setPendingLevels] = useState<number | null>(null);
@@ -71,7 +73,8 @@ export function UnifiedWorkspace() {
   const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
   const {
-    addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute,
+    building: editorBuilding,
+    addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, addSectionCut,
     updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation,
     removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation,
     undo, redo, canUndo, canRedo,
@@ -97,8 +100,18 @@ export function UnifiedWorkspace() {
     onAnnotationPlaced: addAnnotation,
     onEquipmentPlaced: addEquipment,
     onCableRouteCreated: addCableRoute,
+    onSectionCutCreated: addSectionCut,
     onElementSelected: handleElementSelected,
   });
+
+  // Update section cut rendering on map when building section cuts change
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    if (activeBuilding && viewMode === 'floor') {
+      updateSectionCutData(map, activeBuilding.sectionCuts);
+    }
+  }, [activeBuilding?.sectionCuts, viewMode]);
 
   // Resolve selected element data from the floor
   const selectedElementType: ElementType | null = selectedElement?.type ?? null;
@@ -147,7 +160,7 @@ export function UnifiedWorkspace() {
     handleElementSelected(null);
   }, [handleElementSelected]);
 
-  const isPlacementTool = !['select', 'pan', 'photo', 'section-cut'].includes(activeTool);
+  const isPlacementTool = !['select', 'pan', 'photo'].includes(activeTool);
   const showReticle = inputMode === 'touch' && viewMode === 'floor' && isPlacementTool;
   const showToolbar = viewMode === 'floor';
 
@@ -200,13 +213,25 @@ export function UnifiedWorkspace() {
     if (viewMode === 'floor') {
       panelTitle = selectedElementData ? 'Properties' : activeBuilding.name || 'Building';
       panelContent = (
-        <ElementPropertiesPanel
-          elementType={selectedElementType}
-          elementData={selectedElementData}
-          onUpdate={handleElementUpdate}
-          onDelete={handleElementDelete}
-          onDeselect={handleDeselect}
-        />
+        <>
+          <ElementPropertiesPanel
+            elementType={selectedElementType}
+            elementData={selectedElementData}
+            onUpdate={handleElementUpdate}
+            onDelete={handleElementDelete}
+            onDeselect={handleDeselect}
+          />
+          {activeBuilding.sectionCuts.length > 0 && (
+            <div className="mt-4 border-t border-gray-200 pt-4">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Cross Section</h3>
+              <CrossSectionPanel
+                building={activeBuilding}
+                activeSectionCutId={activeSectionCutId}
+                onSelectSectionCut={setActiveSectionCutId}
+              />
+            </div>
+          )}
+        </>
       );
     } else {
       panelTitle = activeBuilding.name || 'Building';

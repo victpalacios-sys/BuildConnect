@@ -41,6 +41,7 @@ export function UnifiedWorkspace() {
   }
 
   const activeBuilding = currentProject.buildings.find((b) => b.id === activeBuildingId);
+  const activeFloor = activeBuilding?.floors[activeFloorIndex] ?? null;
   const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
   let panelTitle = 'Project';
@@ -95,6 +96,9 @@ export function UnifiedWorkspace() {
               setActiveBuilding(buildingId);
               setViewMode('building');
             }}
+            activeFloor={viewMode === 'floor' ? activeFloor : null}
+            activeBuildingFootprint={activeBuilding?.footprint ?? null}
+            viewMode={viewMode}
           />
         </div>
 

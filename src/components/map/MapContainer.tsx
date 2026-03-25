@@ -5,7 +5,10 @@ import { useProjectStore } from '@/store/projectStore';
 import { queryBuildingFootprints } from '@/services/overpass';
 import { geocodeAddress } from '@/services/geocode';
 import type { GeoPolygon } from '@/types/geometry';
+import type { Floor } from '@/types/building';
+import type { ViewMode } from '@/store/editorStore';
 import { createBuildingLayer, LAYER_ID } from './ThreeBuildingLayer';
+import { addFloorPlanLayers, updateFloorPlanData, removeFloorPlanLayers, hasFloorPlanLayers } from './FloorPlanLayer';
 
 const STYLE_URL = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 const DEFAULT_CENTER: [number, number] = [-73.985, 40.748]; // NYC fallback
@@ -16,6 +19,9 @@ interface MapContainerProps {
   onBuildingFootprintSelected?: (polygon: GeoPolygon, levels: number | null) => void;
   onMapBuildingClicked?: (buildingId: string) => void;
   show3D?: boolean;
+  activeFloor?: Floor | null;
+  activeBuildingFootprint?: GeoPolygon | null;
+  viewMode?: ViewMode;
 }
 
 export function MapContainer({
@@ -24,6 +30,9 @@ export function MapContainer({
   onBuildingFootprintSelected,
   onMapBuildingClicked,
   show3D = false,
+  activeFloor = null,
+  activeBuildingFootprint = null,
+  viewMode = 'site',
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -255,6 +264,23 @@ export function MapContainer({
       map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
     }
   }, [show3D, currentProject?.buildings, activeBuildingId]);
+
+  // Manage floor plan GeoJSON layers
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    if (viewMode === 'floor' && activeFloor && activeBuildingFootprint) {
+      if (!hasFloorPlanLayers(map)) {
+        addFloorPlanLayers(map);
+      }
+      updateFloorPlanData(map, activeFloor, activeBuildingFootprint);
+    } else {
+      if (hasFloorPlanLayers(map)) {
+        removeFloorPlanLayers(map);
+      }
+    }
+  }, [viewMode, activeFloor, activeBuildingFootprint]);
 
   return (
     <div className="relative w-full h-full">

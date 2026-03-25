@@ -1,13 +1,12 @@
-import { Building2, MapPin, Clock } from 'lucide-react';
+import { Building2, Clock, User } from 'lucide-react';
 import type { Project } from '@/types/project';
 
 interface ProjectCardProps {
   project: Project;
   onClick: () => void;
-  onDelete: () => void;
 }
 
-export function ProjectCard({ project, onClick, onDelete }: ProjectCardProps) {
+export function ProjectCard({ project, onClick }: ProjectCardProps) {
   const statusColors: Record<string, string> = {
     draft: 'bg-gray-100 text-gray-700',
     survey: 'bg-blue-100 text-blue-700',
@@ -15,6 +14,8 @@ export function ProjectCard({ project, onClick, onDelete }: ProjectCardProps) {
     review: 'bg-amber-100 text-amber-700',
     complete: 'bg-green-100 text-green-700',
   };
+
+  const buildingCount = project.buildings.length;
 
   return (
     <button
@@ -31,10 +32,10 @@ export function ProjectCard({ project, onClick, onDelete }: ProjectCardProps) {
         </span>
       </div>
 
-      {project.address && (
+      {project.customer && (
         <div className="flex items-center gap-1 mt-2 text-sm text-gray-500">
-          <MapPin className="w-3.5 h-3.5" />
-          {project.address}
+          <User className="w-3.5 h-3.5" />
+          {project.customer}
         </div>
       )}
 
@@ -43,15 +44,9 @@ export function ProjectCard({ project, onClick, onDelete }: ProjectCardProps) {
           <Clock className="w-3 h-3" />
           {new Date(project.updatedAt).toLocaleDateString()}
         </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
-        >
-          Delete
-        </button>
+        <span className="text-xs text-gray-400">
+          {buildingCount} building{buildingCount !== 1 ? 's' : ''}
+        </span>
       </div>
     </button>
   );

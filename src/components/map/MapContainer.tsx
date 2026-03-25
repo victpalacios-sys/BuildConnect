@@ -6,7 +6,8 @@ import { queryBuildingFootprints } from '@/services/overpass';
 import { geocodeAddress } from '@/services/geocode';
 import type { GeoPolygon } from '@/types/geometry';
 import type { Floor } from '@/types/building';
-import type { ViewMode } from '@/store/editorStore';
+import type { ViewMode, EditorTool } from '@/store/editorStore';
+import type { OSMBuilding } from '@/services/overpass';
 import { createBuildingLayer, LAYER_ID } from './ThreeBuildingLayer';
 import { addFloorPlanLayers, updateFloorPlanData, removeFloorPlanLayers, hasFloorPlanLayers } from './FloorPlanLayer';
 
@@ -19,10 +20,13 @@ interface MapContainerProps {
   onBuildingFootprintSelected?: (polygon: GeoPolygon, levels: number | null) => void;
   onMapBuildingClicked?: (buildingId: string) => void;
   onMapClick?: (e: { lngLat: { lng: number; lat: number }; point?: { x: number; y: number } }) => void;
+  onBuildingsLoaded?: (buildings: OSMBuilding[]) => void;
+  onExitFloorMode?: () => void;
   show3D?: boolean;
   activeFloor?: Floor | null;
   activeBuildingFootprint?: GeoPolygon | null;
   viewMode?: ViewMode;
+  activeTool?: EditorTool;
   mapRef?: React.MutableRefObject<maplibregl.Map | null>;
 }
 
@@ -32,10 +36,13 @@ export function MapContainer({
   onBuildingFootprintSelected,
   onMapBuildingClicked,
   onMapClick,
+  onBuildingsLoaded,
+  onExitFloorMode,
   show3D = false,
   activeFloor = null,
   activeBuildingFootprint = null,
   viewMode = 'site',
+  activeTool = 'select',
   mapRef: externalMapRef,
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -54,6 +61,12 @@ export function MapContainer({
   onBuildingFootprintSelectedRef.current = onBuildingFootprintSelected;
   const viewModeRef = useRef(viewMode);
   viewModeRef.current = viewMode;
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
+  const onBuildingsLoadedRef = useRef(onBuildingsLoaded);
+  onBuildingsLoadedRef.current = onBuildingsLoaded;
+  const onExitFloorModeRef = useRef(onExitFloorMode);
+  onExitFloorModeRef.current = onExitFloorMode;
 
   const loadBuildings = useCallback(async (map: maplibregl.Map) => {
     const center = map.getCenter();
@@ -94,6 +107,11 @@ export function MapContainer({
           },
         });
       }
+
+      // Notify parent about loaded OSM buildings
+      if (onBuildingsLoadedRef.current) {
+        onBuildingsLoadedRef.current(buildings);
+      }
     } catch (err) {
       console.error('Failed to load buildings:', err);
     } finally {
@@ -109,7 +127,7 @@ export function MapContainer({
       .filter((b) => b.footprint)
       .map((b) => ({
         type: 'Feature' as const,
-        properties: { buildingId: b.id },
+        properties: { buildingId: b.id, buildingName: b.name || '' },
         geometry: b.footprint!,
       }));
 
@@ -134,6 +152,23 @@ export function MapContainer({
         type: 'line',
         source: 'project-buildings',
         paint: { 'line-color': '#1d4ed8', 'line-width': 3.5 },
+      });
+      map.addLayer({
+        id: 'project-buildings-label',
+        type: 'symbol',
+        source: 'project-buildings',
+        layout: {
+          'text-field': ['get', 'buildingName'],
+          'text-size': 12,
+          'text-anchor': 'center',
+          'text-allow-overlap': true,
+          'symbol-placement': 'point',
+        },
+        paint: {
+          'text-color': '#1e293b',
+          'text-halo-color': '#ffffff',
+          'text-halo-width': 1.5,
+        },
       });
     }
   }, [currentProject]);
@@ -198,6 +233,21 @@ export function MapContainer({
       map.on('click', (e) => {
         if (onMapClickRef.current) {
           onMapClickRef.current({ lngLat: { lng: e.lngLat.lng, lat: e.lngLat.lat }, point: { x: e.point.x, y: e.point.y } });
+        }
+
+        // Exit floor mode when clicking empty space with select tool
+        if (viewModeRef.current === 'floor' && activeToolRef.current === 'select' && onExitFloorModeRef.current) {
+          const floorLayers = ['fp-walls', 'fp-doors', 'fp-windows', 'fp-equipment', 'fp-cables', 'fp-annotations', 'fp-section-cuts-line'];
+          const hitFeatures = floorLayers.flatMap((layerId) => {
+            try {
+              return map.queryRenderedFeatures(e.point, { layers: [layerId] });
+            } catch {
+              return [];
+            }
+          });
+          if (hitFeatures.length === 0) {
+            onExitFloorModeRef.current();
+          }
         }
       });
 

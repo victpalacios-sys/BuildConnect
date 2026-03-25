@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import type { Map as MaplibreMap } from 'maplibre-gl';
-import { ArrowLeft, Menu } from 'lucide-react';
+import { ArrowLeft, Menu, ChevronRight } from 'lucide-react';
+import type { OSMBuilding } from '@/services/overpass';
 import { useProjectStore } from '@/store/projectStore';
 import { useEditorStore } from '@/store/editorStore';
-import { useResponsive } from '@/hooks/useResponsive';
 import { useInputMode } from '@/hooks/useInputMode';
 import { useFloorEditor } from '@/hooks/useFloorEditor';
 import { useMapInteraction } from '@/hooks/useMapInteraction';
@@ -27,7 +27,6 @@ import type { GeoPolygon } from '@/types/geometry';
 export function UnifiedWorkspace() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const breakpoint = useResponsive();
   const { currentProject, openProject, loading, activeBuildingId, setActiveBuilding, addBuilding } = useProjectStore();
   const { viewMode, setViewMode, activeFloorIndex, setActiveFloor, activeTool } = useEditorStore();
   const inputMode = useInputMode();
@@ -38,6 +37,7 @@ export function UnifiedWorkspace() {
   const [addingBuilding, setAddingBuilding] = useState(false);
   const [pendingFootprint, setPendingFootprint] = useState<GeoPolygon | null>(null);
   const [pendingLevels, setPendingLevels] = useState<number | null>(null);
+  const [osmBuildings, setOsmBuildings] = useState<OSMBuilding[]>([]);
 
   useEffect(() => {
     if (projectId && currentProject?.id !== projectId) {
@@ -181,6 +181,28 @@ export function UnifiedWorkspace() {
     mapRef.current?.flyTo({ center: [lng, lat], zoom: 17 });
   }, []);
 
+  const handleBuildingsLoaded = useCallback((buildings: OSMBuilding[]) => {
+    setOsmBuildings(buildings);
+  }, []);
+
+  const handleExitFloorMode = useCallback(() => {
+    if (activeBuildingId) {
+      setViewMode('building');
+    }
+  }, [activeBuildingId, setViewMode]);
+
+  // Back button handler: navigate up the hierarchy
+  const handleBack = useCallback(() => {
+    if (viewMode === 'floor') {
+      setViewMode('building');
+    } else if (viewMode === 'building') {
+      setActiveBuilding(null);
+      setViewMode('site');
+    } else {
+      navigate('/');
+    }
+  }, [viewMode, setViewMode, setActiveBuilding, navigate]);
+
   // Early returns AFTER all hooks
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center text-gray-400">Loading project...</div>;
@@ -210,6 +232,7 @@ export function UnifiedWorkspace() {
         selectedLevels={pendingLevels}
         onFlyTo={handleFlyTo}
         onAutoSelectFootprint={handleFootprintSelected}
+        osmBuildings={osmBuildings}
       />
     );
   } else if (activeBuildingId && activeBuilding) {
@@ -250,15 +273,49 @@ export function UnifiedWorkspace() {
   return (
     <div className="h-screen flex flex-col">
       <header className="bg-white border-b border-gray-200 px-3 py-2 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/')} className="p-1.5 hover:bg-gray-100 rounded" title="Back to projects">
+        <div className="flex items-center gap-1 min-w-0">
+          <button onClick={handleBack} className="p-1.5 hover:bg-gray-100 rounded shrink-0" title="Go back">
             <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <h1 className="text-sm font-semibold text-gray-900 truncate max-w-[200px]">
-            {currentProject.name}
-          </h1>
+          <nav className="flex items-center gap-1 min-w-0 text-sm">
+            {viewMode === 'site' && !activeBuildingId ? (
+              <span className="font-semibold text-gray-900 truncate max-w-[200px]">{currentProject.name}</span>
+            ) : (
+              <button
+                onClick={() => { setActiveBuilding(null); setViewMode('site'); }}
+                className="text-blue-600 hover:underline truncate max-w-[120px]"
+              >
+                {currentProject.name}
+              </button>
+            )}
+            {activeBuildingId && activeBuilding && (
+              <>
+                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                {viewMode === 'floor' ? (
+                  <button
+                    onClick={() => setViewMode('building')}
+                    className="text-blue-600 hover:underline truncate max-w-[120px]"
+                  >
+                    {activeBuilding.name || 'Building'}
+                  </button>
+                ) : (
+                  <span className="font-semibold text-gray-900 truncate max-w-[120px]">{activeBuilding.name || 'Building'}</span>
+                )}
+              </>
+            )}
+            {viewMode === 'floor' && activeFloor && (
+              <>
+                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                <span className="font-semibold text-gray-900 truncate max-w-[100px]">{activeFloor.label}</span>
+              </>
+            )}
+          </nav>
         </div>
-        <button onClick={() => setPanelOpen(!panelOpen)} className="p-1.5 hover:bg-gray-100 rounded" title="Toggle panel">
+        <button
+          onClick={() => setPanelOpen((prev) => !prev)}
+          className="p-1.5 hover:bg-gray-100 rounded shrink-0"
+          title="Toggle panel"
+        >
           <Menu className="w-5 h-5 text-gray-600" />
         </button>
       </header>
@@ -283,9 +340,12 @@ export function UnifiedWorkspace() {
               setViewMode('building');
             }}
             onMapClick={viewMode === 'floor' ? handleMapClick : undefined}
+            onBuildingsLoaded={handleBuildingsLoaded}
+            onExitFloorMode={handleExitFloorMode}
             activeFloor={viewMode === 'floor' ? activeFloor : null}
             activeBuildingFootprint={activeBuilding?.footprint ?? null}
             viewMode={viewMode}
+            activeTool={activeTool}
             mapRef={mapRef}
           />
           <Reticle
@@ -303,15 +363,9 @@ export function UnifiedWorkspace() {
           )}
         </div>
 
-        {breakpoint === 'desktop' ? (
-          <SidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={panelTitle}>
-            {panelContent}
-          </SidePanel>
-        ) : (
-          <SidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={panelTitle}>
-            {panelContent}
-          </SidePanel>
-        )}
+        <SidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={panelTitle}>
+          {panelContent}
+        </SidePanel>
       </div>
     </div>
   );

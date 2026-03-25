@@ -10,17 +10,19 @@ interface BottomSheetProps {
 export function BottomSheet({ open, onClose, modal = false, children }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState<'collapsed' | 'half' | 'full'>('half');
+  const dragging = useRef(false);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
 
   const handleDragStart = useCallback((e: React.PointerEvent) => {
+    dragging.current = true;
     dragStartY.current = e.clientY;
     dragStartHeight.current = sheetRef.current?.getBoundingClientRect().height ?? 0;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
   }, []);
 
   const handleDrag = useCallback((e: React.PointerEvent) => {
-    if (!dragStartY.current) return;
+    if (!dragging.current) return;
     const deltaY = dragStartY.current - e.clientY;
     const newHeight = dragStartHeight.current + deltaY;
     const vh = window.innerHeight;
@@ -36,6 +38,7 @@ export function BottomSheet({ open, onClose, modal = false, children }: BottomSh
   }, [onClose]);
 
   const handleDragEnd = useCallback(() => {
+    dragging.current = false;
     dragStartY.current = 0;
   }, []);
 

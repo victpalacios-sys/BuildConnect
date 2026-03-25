@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Search, Check, Building2 } from 'lucide-react';
+import { Search, Check, Building2, AlertCircle } from 'lucide-react';
 import { geocodeAddress } from '@/services/geocode';
-import { queryBuildingFootprints, findNearestBuilding } from '@/services/overpass';
+import { findNearestBuilding } from '@/services/overpass';
+import type { OSMBuilding } from '@/services/overpass';
 import { geoPolygonToLocal, generateFloors } from '@/services/building-generator';
 import type { Building } from '@/types/building';
 import type { GeoPolygon } from '@/types/geometry';
@@ -14,14 +15,16 @@ interface AddBuildingPanelProps {
   selectedLevels: number | null;
   onFlyTo: (lat: number, lng: number) => void;
   onAutoSelectFootprint?: (polygon: GeoPolygon, levels: number | null) => void;
+  osmBuildings?: OSMBuilding[];
 }
 
-export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selectedLevels, onFlyTo, onAutoSelectFootprint }: AddBuildingPanelProps) {
+export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selectedLevels, onFlyTo, onAutoSelectFootprint, osmBuildings }: AddBuildingPanelProps) {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [floorCount, setFloorCount] = useState(3);
   const [floorHeight, setFloorHeight] = useState(3.0);
   const [geocoding, setGeocoding] = useState(false);
+  const [autoSelectFailed, setAutoSelectFailed] = useState(false);
 
   // Use OSM levels if available
   const effectiveFloorCount = selectedLevels ?? floorCount;
@@ -29,21 +32,24 @@ export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selected
   const handleGeocode = useCallback(async () => {
     if (!address.trim()) return;
     setGeocoding(true);
+    setAutoSelectFailed(false);
     try {
       const result = await geocodeAddress(address);
       if (result) {
         onFlyTo(result.lat, result.lng);
 
-        // Auto-select nearest building footprint from OSM
+        // Auto-select nearest building footprint from already-loaded OSM data
         if (onAutoSelectFootprint) {
-          try {
-            const buildings = await queryBuildingFootprints(result.lat, result.lng, 100);
-            const nearest = findNearestBuilding(buildings, result.lat, result.lng);
+          if (osmBuildings && osmBuildings.length > 0) {
+            const nearest = findNearestBuilding(osmBuildings, result.lat, result.lng);
             if (nearest) {
               onAutoSelectFootprint(nearest.polygon, nearest.levels);
+            } else {
+              setAutoSelectFailed(true);
             }
-          } catch {
-            // Overpass may be rate-limited — user can still manually select
+          } else {
+            // No OSM buildings available (Overpass may have failed)
+            setAutoSelectFailed(true);
           }
         }
       }
@@ -52,7 +58,7 @@ export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selected
     } finally {
       setGeocoding(false);
     }
-  }, [address, onFlyTo, onAutoSelectFootprint]);
+  }, [address, onFlyTo, onAutoSelectFootprint, osmBuildings]);
 
   const handleSave = useCallback(() => {
     const footprintLocal = selectedFootprint ? geoPolygonToLocal(selectedFootprint) : [];
@@ -119,6 +125,13 @@ export function AddBuildingPanel({ onSave, onCancel, selectedFootprint, selected
           'Tap a building on the map to select its footprint'
         )}
       </div>
+
+      {autoSelectFailed && !selectedFootprint && (
+        <div className="p-3 rounded-lg text-sm bg-amber-50 text-amber-700 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
+          <span>Could not auto-detect building. Tap a building on the map to select it.</span>
+        </div>
+      )}
 
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1">Number of Floors</label>

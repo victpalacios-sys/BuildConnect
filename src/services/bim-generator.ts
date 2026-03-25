@@ -61,7 +61,7 @@ function createWallMesh(
   mesh.position.set(midX, height / 2, -midY);
 
   const angle = Math.atan2(dy, dx);
-  mesh.rotation.y = -angle;
+  mesh.rotation.y = angle;
 
   return mesh;
 }
@@ -71,9 +71,9 @@ function createFloorSlab(
   material: THREE.Material,
 ): THREE.Mesh {
   const shape = new THREE.Shape();
-  shape.moveTo(footprint[0].x, -footprint[0].y);
+  shape.moveTo(footprint[0].x, footprint[0].y);
   for (let i = 1; i < footprint.length; i++) {
-    shape.lineTo(footprint[i].x, -footprint[i].y);
+    shape.lineTo(footprint[i].x, footprint[i].y);
   }
   shape.closePath();
 

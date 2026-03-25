@@ -26,7 +26,7 @@ export function ProjectWorkspace() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
+    <div className="h-screen flex flex-col bg-gray-50">
       <WorkspaceNav projectId={currentProject.id} />
       <div className="flex-1 overflow-hidden">
         <Routes>

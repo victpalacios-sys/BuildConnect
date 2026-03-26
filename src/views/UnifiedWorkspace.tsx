@@ -17,7 +17,7 @@ import { BuildingPanel } from '@/components/panels/BuildingPanel';
 import { ElementPropertiesPanel } from '@/components/panels/ElementPropertiesPanel';
 import type { ElementType } from '@/components/panels/ElementPropertiesPanel';
 import { MapContainer } from '@/components/map/MapContainer';
-import { setSelectionHighlight, updateSectionCutData } from '@/components/map/FloorPlanLayer';
+import { setSelectionHighlight, updateSectionCutData, updateFloorPlanData, hasFloorPlanLayers, addFloorPlanLayers } from '@/components/map/FloorPlanLayer';
 import { CrossSectionPanel } from '@/components/panels/CrossSectionPanel';
 import { Reticle } from '@/components/map/Reticle';
 import { DrawingToolbar } from '@/components/toolbar/DrawingToolbar';
@@ -48,13 +48,25 @@ export function UnifiedWorkspace() {
   const activeBuilding = currentProject?.buildings.find((b) => b.id === activeBuildingId) ?? undefined;
   const activeFloor = activeBuilding?.floors[activeFloorIndex] ?? null;
 
+  // Imperative floor plan map update — called after every floor edit
+  const handleFloorChanged = useCallback((updatedFloor: import('@/types/building').Floor) => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+    const footprint = activeBuilding?.footprint ?? null;
+    if (!footprint) return;
+    if (!hasFloorPlanLayers(map)) {
+      addFloorPlanLayers(map);
+    }
+    updateFloorPlanData(map, updatedFloor, footprint);
+  }, [activeBuilding?.footprint]);
+
   const {
     building: _editorBuilding,
     addWall, addDoor, addWindow, addAnnotation, addEquipment, addCableRoute, addSectionCut,
     updateWall, updateDoor, updateWindow, updateEquipment, updateCableRoute, updateAnnotation,
     removeWall, removeDoor, removeWindow, removeEquipment, removeCableRoute, removeAnnotation,
     undo, redo, canUndo, canRedo,
-  } = useFloorEditor();
+  } = useFloorEditor({ onFloorChanged: handleFloorChanged });
 
   const handleElementSelected = useCallback((element: SelectedElement | null) => {
     setSelectedElement(element);

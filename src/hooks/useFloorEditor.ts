@@ -18,9 +18,15 @@ function localToGeoPoint(point: Point2D, building: Building): GeoPoint {
   };
 }
 
-export function useFloorEditor() {
+interface UseFloorEditorOptions {
+  onFloorChanged?: (floor: Floor) => void;
+}
+
+export function useFloorEditor(options?: UseFloorEditorOptions) {
   const { currentProject, updateCurrentProject, activeBuildingId, updateBuilding } = useProjectStore();
   const { activeFloorIndex } = useEditorStore();
+  const onFloorChangedRef = useRef(options?.onFloorChanged);
+  onFloorChangedRef.current = options?.onFloorChanged;
 
   const building = currentProject?.buildings.find((b) => b.id === activeBuildingId) ?? null;
   const floor = building?.floors[activeFloorIndex] ?? null;
@@ -40,6 +46,8 @@ export function useFloorEditor() {
         b.id === activeBuildingId ? { ...b, floors } : b,
       );
       await updateCurrentProject({ buildings });
+      // Notify caller immediately so map can update without waiting for React re-render
+      onFloorChangedRef.current?.(updatedFloor);
     },
     [building, currentProject, activeBuildingId, activeFloorIndex, updateCurrentProject],
   );

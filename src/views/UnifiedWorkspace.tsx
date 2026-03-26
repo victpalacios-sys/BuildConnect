@@ -65,6 +65,7 @@ export function UnifiedWorkspace() {
 
   const {
     handleMapClick,
+    handleFinishDrawing,
     handleReticlePlace,
     getReticleHint,
   } = useMapInteraction({
@@ -343,6 +344,7 @@ export function UnifiedWorkspace() {
               setViewMode('building');
             }}
             onMapClick={viewMode === 'floor' ? handleMapClick : undefined}
+            onDoubleClick={viewMode === 'floor' ? handleFinishDrawing : undefined}
             onBuildingsLoaded={handleBuildingsLoaded}
             onExitFloorMode={handleExitFloorMode}
             activeFloor={viewMode === 'floor' ? activeFloor : null}

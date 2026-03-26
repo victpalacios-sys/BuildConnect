@@ -20,6 +20,7 @@ interface MapContainerProps {
   onBuildingFootprintSelected?: (polygon: GeoPolygon, levels: number | null) => void;
   onMapBuildingClicked?: (buildingId: string) => void;
   onMapClick?: (e: { lngLat: { lng: number; lat: number }; point?: { x: number; y: number } }) => void;
+  onDoubleClick?: () => void;
   onBuildingsLoaded?: (buildings: OSMBuilding[]) => void;
   onExitFloorMode?: () => void;
   show3D?: boolean;
@@ -37,6 +38,7 @@ export function MapContainer({
   onBuildingFootprintSelected,
   onMapBuildingClicked,
   onMapClick,
+  onDoubleClick,
   onBuildingsLoaded,
   onExitFloorMode,
   show3D = false,
@@ -66,6 +68,8 @@ export function MapContainer({
   viewModeRef.current = viewMode;
   const activeToolRef = useRef(activeTool);
   activeToolRef.current = activeTool;
+  const onDoubleClickRef = useRef(onDoubleClick);
+  onDoubleClickRef.current = onDoubleClick;
   const onBuildingsLoadedRef = useRef(onBuildingsLoaded);
   onBuildingsLoadedRef.current = onBuildingsLoaded;
   const onExitFloorModeRef = useRef(onExitFloorMode);
@@ -246,6 +250,9 @@ export function MapContainer({
         mapReadyRef.current = true;
         if (externalMapRef) externalMapRef.current = map;
 
+        // Disable double-click zoom initially (reactive effect will manage it)
+        map.doubleClickZoom.disable();
+
         // Render project building footprints
         renderProjectBuildings(map);
 
@@ -294,6 +301,14 @@ export function MapContainer({
           if (buildingId && onMapBuildingClickedRef.current) {
             onMapBuildingClickedRef.current(buildingId);
           }
+        }
+      });
+
+      // Double-click finishes wall/cable/section-cut chains
+      map.on('dblclick', (e) => {
+        if (onDoubleClickRef.current) {
+          onDoubleClickRef.current();
+          e.preventDefault();
         }
       });
 
@@ -412,6 +427,42 @@ export function MapContainer({
       map.once('styledata', doUpdate);
     }
   }, [viewMode, activeFloor, activeBuildingFootprint, floorFingerprint]);
+
+  // Enable/disable double-click zoom based on active tool
+  const DRAWING_TOOLS: EditorTool[] = ['wall', 'cable', 'section-cut', 'door', 'window', 'equipment', 'annotate'];
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReadyRef.current) return;
+
+    if (viewMode === 'floor' && DRAWING_TOOLS.includes(activeTool)) {
+      map.doubleClickZoom.disable();
+    } else {
+      map.doubleClickZoom.enable();
+    }
+  }, [viewMode, activeTool]);
+
+  // Zoom to building footprint when entering floor mode
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReadyRef.current) return;
+    if (viewMode !== 'floor' || !activeBuildingFootprint) return;
+
+    const coords = activeBuildingFootprint.coordinates[0];
+    if (!coords || coords.length === 0) return;
+
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const [lng, lat] of coords) {
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+
+    map.fitBounds(
+      [[minLng, minLat], [maxLng, maxLat]],
+      { padding: 100, duration: 600 },
+    );
+  }, [viewMode, activeBuildingFootprint]);
 
   // Show pending footprint preview during Add Building flow
   useEffect(() => {

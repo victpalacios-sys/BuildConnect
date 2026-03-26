@@ -97,6 +97,7 @@ export function UnifiedWorkspace() {
     }
   }, [activeBuilding?.sectionCuts, viewMode]);
 
+
   const showFloorSelector = activeBuilding && activeBuilding.floors.length > 0 && viewMode === 'floor';
 
   // Resolve selected element data from the floor
@@ -321,13 +322,15 @@ export function UnifiedWorkspace() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {showFloorSelector && (
+        {showFloorSelector ? (
           <FloorSelector
-            floors={activeBuilding.floors}
-            groundFloorLevel={activeBuilding.groundFloorLevel}
+            floors={activeBuilding!.floors}
+            groundFloorLevel={activeBuilding!.groundFloorLevel}
             activeFloorIndex={activeFloorIndex}
             onSelectFloor={(index) => { setActiveFloor(index); setViewMode('floor'); }}
           />
+        ) : (
+          <div /> /* Stable placeholder to prevent MapContainer remount */
         )}
 
         <div className="flex-1 relative">

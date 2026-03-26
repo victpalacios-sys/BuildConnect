@@ -49,6 +49,7 @@ export function MapContainer({
 }: MapContainerProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const mapReadyRef = useRef(false);
   const { currentProject, activeBuildingId, updateCurrentProject } = useProjectStore();
   const [loading, setLoading] = useState(false);
 
@@ -69,6 +70,8 @@ export function MapContainer({
   onBuildingsLoadedRef.current = onBuildingsLoaded;
   const onExitFloorModeRef = useRef(onExitFloorMode);
   onExitFloorModeRef.current = onExitFloorMode;
+  const currentProjectRef = useRef(currentProject);
+  currentProjectRef.current = currentProject;
 
   const loadBuildings = useCallback(async (map: maplibregl.Map) => {
     const center = map.getCenter();
@@ -123,9 +126,10 @@ export function MapContainer({
 
   // Render project buildings as highlighted footprint layers
   const renderProjectBuildings = useCallback((map: maplibregl.Map) => {
-    if (!currentProject) return;
+    const project = currentProjectRef.current;
+    if (!project) return;
 
-    const features: GeoJSON.Feature[] = currentProject.buildings
+    const features: GeoJSON.Feature[] = project.buildings
       .filter((b) => b.footprint)
       .map((b) => ({
         type: 'Feature' as const,
@@ -173,22 +177,24 @@ export function MapContainer({
         },
       });
     }
-  }, [currentProject]);
+  }, []);
 
+  // === ONE-TIME map initialization — empty dependency array ===
   useEffect(() => {
     if (!mapContainer.current) return;
 
-    let map: maplibregl.Map;
     let cancelled = false;
+    let map: maplibregl.Map;
 
     async function initMap() {
+      // Determine initial center
+      const project = currentProjectRef.current;
       let center: [number, number];
 
-      if (currentProject?.center) {
-        center = [currentProject.center.lng, currentProject.center.lat];
-      } else if (currentProject?.buildings.length) {
-        // Try first building's address
-        const firstBuilding = currentProject.buildings[0];
+      if (project?.center) {
+        center = [project.center.lng, project.center.lat];
+      } else if (project?.buildings.length) {
+        const firstBuilding = project.buildings[0];
         if (firstBuilding.address) {
           const result = await geocodeAddress(firstBuilding.address);
           if (cancelled) return;
@@ -202,13 +208,13 @@ export function MapContainer({
           center = DEFAULT_CENTER;
         }
       } else {
-        // Try browser geolocation (engineer is likely on-site)
+        // Try browser geolocation
         try {
           const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
             navigator.geolocation.getCurrentPosition(resolve, reject, {
               enableHighAccuracy: false,
               timeout: 5000,
-              maximumAge: 300000, // cache for 5 minutes
+              maximumAge: 300000,
             });
           });
           if (!cancelled) {
@@ -237,9 +243,10 @@ export function MapContainer({
 
       map.on('load', () => {
         mapRef.current = map;
+        mapReadyRef.current = true;
         if (externalMapRef) externalMapRef.current = map;
 
-        // Project buildings highlight layer (replaces old single selected-building layer)
+        // Render project building footprints
         renderProjectBuildings(map);
 
         // Load Overpass buildings
@@ -279,7 +286,7 @@ export function MapContainer({
         }
       });
 
-      // Project building click — skip when editing a floor (drawing tools handle clicks)
+      // Project building click — skip when editing a floor
       map.on('click', 'project-buildings-fill', (e) => {
         if (viewModeRef.current === 'floor') return;
         if (e.features?.[0]) {
@@ -291,7 +298,7 @@ export function MapContainer({
       });
 
       map.on('mouseenter', 'buildings-fill', () => {
-        if (allowFootprintSelection) {
+        if (allowFootprintSelectionRef.current) {
           map.getCanvas().style.cursor = 'pointer';
         }
       });
@@ -310,22 +317,39 @@ export function MapContainer({
 
     return () => {
       cancelled = true;
+      mapReadyRef.current = false;
       if (map) map.remove();
+      mapRef.current = null;
+      if (externalMapRef) externalMapRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject?.center, currentProject?.buildings.length, loadBuildings, renderProjectBuildings, updateCurrentProject]);
+  }, []);
+
+  // === Fly to project center when project changes ===
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReadyRef.current) return;
+    if (currentProject?.center) {
+      map.flyTo({ center: [currentProject.center.lng, currentProject.center.lat], zoom: 17 });
+    }
+  }, [currentProject?.center]);
 
   // Update project building footprints when buildings change
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !mapReadyRef.current) return;
+    if (!map.isStyleLoaded()) {
+      map.once('styledata', () => renderProjectBuildings(map));
+      return;
+    }
     renderProjectBuildings(map);
   }, [currentProject?.buildings, renderProjectBuildings]);
 
   // Manage map tile opacity
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !mapReadyRef.current) return;
+    if (!map.isStyleLoaded()) return;
 
     const style = map.getStyle();
     if (!style?.layers) return;
@@ -340,7 +364,8 @@ export function MapContainer({
   // Manage 3D building layer
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !mapReadyRef.current) return;
+    if (!map.isStyleLoaded()) return;
 
     // Remove existing 3D layer
     if (map.getLayer(LAYER_ID)) {
@@ -357,27 +382,42 @@ export function MapContainer({
     }
   }, [show3D, currentProject?.buildings, activeBuildingId]);
 
+  // Derive a fingerprint from floor element counts to detect data changes
+  const floorFingerprint = activeFloor
+    ? `${activeFloor.id}-${activeFloor.walls.length}-${activeFloor.doors.length}-${activeFloor.windows.length}-${activeFloor.equipment.length}-${activeFloor.cableRoutes.length}-${activeFloor.annotations.length}`
+    : '';
+
   // Manage floor plan GeoJSON layers
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !mapReadyRef.current) return;
 
-    if (viewMode === 'floor' && activeFloor && activeBuildingFootprint) {
-      if (!hasFloorPlanLayers(map)) {
-        addFloorPlanLayers(map);
-      }
-      updateFloorPlanData(map, activeFloor, activeBuildingFootprint);
-    } else {
-      if (hasFloorPlanLayers(map)) {
-        removeFloorPlanLayers(map);
+    function doUpdate() {
+      if (!map!.isStyleLoaded()) return;
+      if (viewMode === 'floor' && activeFloor && activeBuildingFootprint) {
+        if (!hasFloorPlanLayers(map!)) {
+          addFloorPlanLayers(map!);
+        }
+        updateFloorPlanData(map!, activeFloor, activeBuildingFootprint);
+      } else {
+        if (hasFloorPlanLayers(map!)) {
+          removeFloorPlanLayers(map!);
+        }
       }
     }
-  }, [viewMode, activeFloor, activeBuildingFootprint]);
+
+    if (map.isStyleLoaded()) {
+      doUpdate();
+    } else {
+      map.once('styledata', doUpdate);
+    }
+  }, [viewMode, activeFloor, activeBuildingFootprint, floorFingerprint]);
 
   // Show pending footprint preview during Add Building flow
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !map.isStyleLoaded()) return;
+    if (!map || !mapReadyRef.current) return;
+    if (!map.isStyleLoaded()) return;
 
     const sourceId = 'pending-footprint';
     const fillId = 'pending-footprint-fill';

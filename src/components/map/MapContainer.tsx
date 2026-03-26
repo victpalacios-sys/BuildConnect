@@ -55,6 +55,7 @@ export function MapContainer({
   const { currentProject, activeBuildingId, updateCurrentProject } = useProjectStore();
   const [loading, setLoading] = useState(false);
 
+
   // Use refs to avoid stale closures in map event handlers
   const onMapClickRef = useRef(onMapClick);
   onMapClickRef.current = onMapClick;
@@ -340,16 +341,22 @@ export function MapContainer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // === Fly to project center when project changes ===
+  // === Fly to project center when project changes (skip during floor editing) ===
+  const lastFlownCenterRef = useRef<string | null>(null);
   useEffect(() => {
+    if (viewMode === 'floor') return; // Don't move map while editing floor
     const map = mapRef.current;
     if (!map || !mapReadyRef.current) return;
-    if (currentProject?.center) {
-      map.flyTo({ center: [currentProject.center.lng, currentProject.center.lat], zoom: 17 });
-    }
-  }, [currentProject?.center]);
+    if (!currentProject?.center) return;
+    const centerKey = `${currentProject.center.lat},${currentProject.center.lng}`;
+    if (lastFlownCenterRef.current === centerKey) return;
+    lastFlownCenterRef.current = centerKey;
+    map.flyTo({ center: [currentProject.center.lng, currentProject.center.lat], zoom: 17 });
+  }, [currentProject?.center, viewMode]);
 
-  // Update project building footprints when buildings change
+  // Update project building footprints when buildings are added/removed (not on wall edits)
+  // Use building count + IDs as fingerprint to avoid re-rendering on floor data changes
+  const buildingFingerprint = currentProject?.buildings.map(b => b.id).join(',') ?? '';
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReadyRef.current) return;
@@ -358,7 +365,8 @@ export function MapContainer({
       return;
     }
     renderProjectBuildings(map);
-  }, [currentProject?.buildings, renderProjectBuildings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buildingFingerprint]);
 
   // Manage map tile opacity
   useEffect(() => {
@@ -376,8 +384,9 @@ export function MapContainer({
     }
   }, [mapTileOpacity]);
 
-  // Manage 3D building layer
+  // Manage 3D building layer (skip during floor editing)
   useEffect(() => {
+    if (viewMode === 'floor') return; // Don't touch 3D/pitch while editing floor
     const map = mapRef.current;
     if (!map || !mapReadyRef.current) return;
     if (!map.isStyleLoaded()) return;
@@ -395,7 +404,8 @@ export function MapContainer({
     } else {
       map.easeTo({ pitch: 0, bearing: 0, duration: 800 });
     }
-  }, [show3D, currentProject?.buildings, activeBuildingId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [show3D, activeBuildingId]);
 
   // Derive a fingerprint from floor element counts to detect data changes
   const floorFingerprint = activeFloor
@@ -414,7 +424,9 @@ export function MapContainer({
           addFloorPlanLayers(map!);
         }
         updateFloorPlanData(map!, activeFloor, activeBuildingFootprint);
-      } else {
+      } else if (viewMode !== 'floor') {
+        // Only remove floor plan layers when explicitly NOT in floor mode
+        // (prevents removing layers during transient re-renders while editing)
         if (hasFloorPlanLayers(map!)) {
           removeFloorPlanLayers(map!);
         }
@@ -441,11 +453,22 @@ export function MapContainer({
     }
   }, [viewMode, activeTool]);
 
-  // Zoom to building footprint when entering floor mode
+  // Zoom to building footprint when entering floor mode (only once per entry)
+  const hasFitBoundsRef = useRef(false);
+  const prevViewModeForBoundsRef = useRef(viewMode);
   useEffect(() => {
+    // Reset flag when leaving floor mode
+    if (prevViewModeForBoundsRef.current === 'floor' && viewMode !== 'floor') {
+      hasFitBoundsRef.current = false;
+    }
+    prevViewModeForBoundsRef.current = viewMode;
+  }, [viewMode]);
+  useEffect(() => {
+    if (viewMode !== 'floor' || !activeBuildingFootprint) return;
+    if (hasFitBoundsRef.current) return; // Already zoomed for this floor session
+
     const map = mapRef.current;
     if (!map || !mapReadyRef.current) return;
-    if (viewMode !== 'floor' || !activeBuildingFootprint) return;
 
     const coords = activeBuildingFootprint.coordinates[0];
     if (!coords || coords.length === 0) return;
@@ -458,6 +481,7 @@ export function MapContainer({
       if (lat > maxLat) maxLat = lat;
     }
 
+    hasFitBoundsRef.current = true;
     map.fitBounds(
       [[minLng, minLat], [maxLng, maxLat]],
       { padding: 100, duration: 600 },

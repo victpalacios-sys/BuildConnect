@@ -335,16 +335,16 @@ export function UnifiedWorkspace() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        {showFloorSelector ? (
-          <FloorSelector
-            floors={activeBuilding!.floors}
-            groundFloorLevel={activeBuilding!.groundFloorLevel}
-            activeFloorIndex={activeFloorIndex}
-            onSelectFloor={(index) => { setActiveFloor(index); setViewMode('floor'); }}
-          />
-        ) : (
-          <div /> /* Stable placeholder to prevent MapContainer remount */
-        )}
+        <div className={showFloorSelector ? '' : 'hidden'}>
+          {activeBuilding && (
+            <FloorSelector
+              floors={activeBuilding.floors}
+              groundFloorLevel={activeBuilding.groundFloorLevel}
+              activeFloorIndex={activeFloorIndex}
+              onSelectFloor={(index) => { setActiveFloor(index); setViewMode('floor'); }}
+            />
+          )}
+        </div>
 
         <div className="flex-1 relative">
           <MapContainer
